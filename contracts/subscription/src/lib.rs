@@ -13,7 +13,7 @@ mod types;
 pub use errors::Error;
 pub use types::{SubStatus, Subscription};
 
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env};
 use storage::DataKey;
 
 #[contract]
@@ -93,10 +93,74 @@ impl SubscriptionContract {
         Ok(id)
     }
 
-    /// Merchant pulls one period's charge.
+    /// Merchant pulls one period's charge. This is where all three
+    /// invariants are enforced, in this order, before any funds move:
+    ///
+    /// - REVOCATION: only an `Active` subscription can be charged.
+    /// - INTERVAL: the current ledger must be at or past
+    ///   `next_charge_ledger`.
+    /// - CAP: `total_charged + amount_per_period`, computed with
+    ///   `checked_add`, must not exceed `total_cap`.
+    ///
+    /// On success `amount_per_period` moves subscriber -> merchant and the
+    /// next charge is scheduled one full interval from now, so a late charge
+    /// never unlocks a burst of catch-up charges.
     pub fn charge(env: Env, merchant: Address, subscription_id: u64) -> Result<(), Error> {
         merchant.require_auth();
-        storage::read_sub(&env, subscription_id)?;
+        let mut sub = storage::read_sub(&env, subscription_id)?;
+        if sub.merchant != merchant {
+            return Err(Error::NotMerchant);
+        }
+
+        // REVOCATION.
+        match sub.status {
+            SubStatus::Active => {}
+            SubStatus::Paused => return Err(Error::SubscriptionPaused),
+            SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
+            SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+        }
+
+        // INTERVAL.
+        let now = env.ledger().sequence();
+        if now < sub.next_charge_ledger {
+            return Err(Error::IntervalNotElapsed);
+        }
+
+        // CAP.
+        let new_total = sub
+            .total_charged
+            .checked_add(sub.amount_per_period)
+            .ok_or(Error::Overflow)?;
+        if new_total > sub.total_cap {
+            return Err(Error::CapExceeded);
+        }
+        let next_charge_ledger = now
+            .checked_add(sub.interval_ledgers)
+            .ok_or(Error::Overflow)?;
+
+        sub.total_charged = new_total;
+        sub.last_charge_ledger = now;
+        sub.next_charge_ledger = next_charge_ledger;
+        if new_total == sub.total_cap {
+            sub.status = SubStatus::Exhausted;
+        }
+        storage::write_sub(&env, &sub);
+
+        // Every check has passed. If the token refuses the transfer, the
+        // error return rolls back the write above, so a failed pull never
+        // counts against the cap or the schedule.
+        let spender = env.current_contract_address();
+        let transfer = TokenClient::new(&env, &sub.token).try_transfer_from(
+            &spender,
+            &sub.subscriber,
+            &sub.merchant,
+            &sub.amount_per_period,
+        );
+        if !matches!(transfer, Ok(Ok(()))) {
+            return Err(Error::TransferFailed);
+        }
+
+        storage::bump_instance(&env);
         Ok(())
     }
 
