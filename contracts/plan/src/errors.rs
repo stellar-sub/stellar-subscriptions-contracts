@@ -22,4 +22,8 @@ pub enum Error {
     NotPlanMerchant = 9,
     PlanAlreadyInactive = 10,
     Overflow = 11,
+    /// The registry can be linked once, before any plan exists.
+    AlreadyConfigured = 12,
+    /// The linked registry refused to count the plan.
+    RegistryUpdateFailed = 13,
 }

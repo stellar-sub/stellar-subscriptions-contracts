@@ -14,11 +14,19 @@ mod types;
 pub use errors::Error;
 pub use types::Plan;
 
-use soroban_sdk::{contract, contractevent, contractimpl, Address, Env, String, Vec};
+use soroban_sdk::{
+    contract, contractclient, contractevent, contractimpl, Address, Env, String, Vec,
+};
 use storage::DataKey;
 
 /// Longest accepted plan name, in bytes.
 pub const MAX_NAME_LEN: u32 = 64;
+
+/// The one registry call this contract makes.
+#[contractclient(name = "RegistryClient")]
+pub trait RegistryInterface {
+    fn register_plan(env: Env, plan_id: u64);
+}
 
 /// A merchant published a plan.
 #[contractevent]
@@ -50,7 +58,7 @@ pub struct PlanContract;
 
 #[contractimpl]
 impl PlanContract {
-    /// Set the admin. Callable once.
+    /// Set the admin. Callable once. The admin can only link the registry.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         if storage::has_admin(&env) {
             return Err(Error::AlreadyInitialized);
@@ -59,6 +67,26 @@ impl PlanContract {
         storage::write_admin(&env, &admin);
         storage::bump_instance(&env);
         Ok(())
+    }
+
+    /// Admin links the registry every new plan is counted in. Once only, and
+    /// only before the first plan, so the registry never misses one.
+    pub fn set_registry(env: Env, admin: Address, registry: Address) -> Result<(), Error> {
+        let stored = storage::read_admin(&env)?;
+        admin.require_auth();
+        if stored != admin {
+            return Err(Error::Unauthorized);
+        }
+        if storage::read_registry(&env).is_some() || storage::has_plans(&env) {
+            return Err(Error::AlreadyConfigured);
+        }
+        storage::write_registry(&env, &registry);
+        storage::bump_instance(&env);
+        Ok(())
+    }
+
+    pub fn get_registry(env: Env) -> Option<Address> {
+        storage::read_registry(&env)
     }
 
     /// Publish a plan. Requires the merchant's signature. The plan is active
@@ -103,8 +131,15 @@ impl PlanContract {
         storage::write_plan(&env, &plan);
         storage::push_index(&env, DataKey::ByMerchant(plan.merchant.clone()), id);
         storage::push_index(&env, DataKey::AllPlans, id);
-        storage::bump_instance(&env);
 
+        if let Some(registry) = storage::read_registry(&env) {
+            let counted = RegistryClient::new(&env, &registry).try_register_plan(&id);
+            if !matches!(counted, Ok(Ok(()))) {
+                return Err(Error::RegistryUpdateFailed);
+            }
+        }
+
+        storage::bump_instance(&env);
         PlanCreated {
             plan_id: id,
             merchant: plan.merchant,

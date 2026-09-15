@@ -24,6 +24,21 @@ pub enum DataKey {
     ByMerchant(Address),
     /// Persistent: ids of every plan, oldest first.
     AllPlans,
+    /// Instance: linked registry contract, if any.
+    Registry,
+}
+
+pub fn read_registry(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Registry)
+}
+
+pub fn write_registry(env: &Env, registry: &Address) {
+    env.storage().instance().set(&DataKey::Registry, registry);
+}
+
+/// Whether any plan has ever been created.
+pub fn has_plans(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::NextId)
 }
 
 pub fn bump_instance(env: &Env) {
