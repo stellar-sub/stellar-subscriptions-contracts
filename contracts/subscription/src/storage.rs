@@ -23,6 +23,33 @@ pub enum DataKey {
     BySubscriber(Address),
     /// Persistent: ids of every subscription payable to a merchant.
     ByMerchant(Address),
+    /// Instance: linked plan contract, if any.
+    PlanContract,
+    /// Instance: linked registry contract, if any.
+    Registry,
+}
+
+pub fn read_plan_contract(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::PlanContract)
+}
+
+pub fn write_plan_contract(env: &Env, plan_contract: &Address) {
+    env.storage()
+        .instance()
+        .set(&DataKey::PlanContract, plan_contract);
+}
+
+pub fn read_registry(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&DataKey::Registry)
+}
+
+pub fn write_registry(env: &Env, registry: &Address) {
+    env.storage().instance().set(&DataKey::Registry, registry);
+}
+
+/// Whether any subscription has ever been created.
+pub fn has_subscriptions(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::NextId)
 }
 
 pub fn bump_instance(env: &Env) {

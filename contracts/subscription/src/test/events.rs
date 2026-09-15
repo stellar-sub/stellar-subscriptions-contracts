@@ -88,6 +88,7 @@ fn cancel_emits_cancelled_with_the_unused_cap() {
             total_charged: AMOUNT,
             unused_cap: CAP - AMOUNT,
             allowance_updated: true,
+            registry_updated: true,
         },
     );
 }

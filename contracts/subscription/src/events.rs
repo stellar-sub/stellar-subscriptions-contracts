@@ -52,6 +52,9 @@ pub struct Cancelled {
     /// Whether the token allowance was lowered to match. Cancellation takes
     /// effect regardless; this only reports the allowance clean-up.
     pub allowance_updated: bool,
+    /// Whether the linked registry (if any) recorded the cancellation.
+    /// Cancellation takes effect regardless.
+    pub registry_updated: bool,
 }
 
 /// A subscriber paused charging.

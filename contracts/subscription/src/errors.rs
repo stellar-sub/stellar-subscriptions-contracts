@@ -44,4 +44,17 @@ pub enum Error {
     TransferFailed = 19,
     /// The token refused the allowance that backs the subscription.
     ApprovalFailed = 20,
+    /// `plan_id` does not exist in the linked plan contract.
+    PlanNotFound = 21,
+    /// The plan no longer accepts new subscriptions.
+    PlanInactive = 22,
+    /// Merchant, token, amount or interval differ from the plan's terms.
+    PlanMismatch = 23,
+    /// The plan and registry contracts can each be linked once, before any
+    /// subscription exists.
+    AlreadyConfigured = 24,
+    /// A non-zero `plan_id` was given but no plan contract is linked.
+    PlanContractNotSet = 25,
+    /// The linked registry refused an update.
+    RegistryUpdateFailed = 26,
 }
