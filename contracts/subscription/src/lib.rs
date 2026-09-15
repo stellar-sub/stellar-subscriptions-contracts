@@ -6,6 +6,7 @@
 //! billing interval.
 
 mod errors;
+mod storage;
 mod types;
 
 pub use errors::Error;
