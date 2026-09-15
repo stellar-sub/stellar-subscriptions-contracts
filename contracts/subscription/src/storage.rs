@@ -60,12 +60,6 @@ pub fn take_next_id(env: &Env) -> Result<u64, Error> {
     Ok(id)
 }
 
-/// Number of subscriptions created so far.
-pub fn subscription_count(env: &Env) -> u64 {
-    let next: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(1);
-    next.saturating_sub(1)
-}
-
 pub fn read_sub(env: &Env, id: u64) -> Result<Subscription, Error> {
     let key = DataKey::Sub(id);
     let sub = env

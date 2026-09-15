@@ -13,7 +13,7 @@ mod types;
 pub use errors::Error;
 pub use types::{SubStatus, Subscription};
 
-use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env};
+use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
 
 #[contract]
@@ -246,6 +246,56 @@ impl SubscriptionContract {
 
     pub fn get_subscription(env: Env, subscription_id: u64) -> Result<Subscription, Error> {
         storage::read_sub(&env, subscription_id)
+    }
+
+    /// Whether `charge` would pass every contract check right now: Active,
+    /// interval elapsed, and one more period fits under the cap.
+    ///
+    /// The token is not consulted, so a charge can still fail with
+    /// `TransferFailed` if the subscriber's balance or allowance is short.
+    pub fn is_chargeable(env: Env, subscription_id: u64) -> Result<bool, Error> {
+        let sub = storage::read_sub(&env, subscription_id)?;
+        if sub.status != SubStatus::Active {
+            return Ok(false);
+        }
+        let now = env.ledger().sequence();
+        if now < sub.next_charge_ledger || now.checked_add(sub.interval_ledgers).is_none() {
+            return Ok(false);
+        }
+        Ok(match sub.total_charged.checked_add(sub.amount_per_period) {
+            Some(total) => total <= sub.total_cap,
+            None => false,
+        })
+    }
+
+    /// Cap that can still ever be charged: `total_cap - total_charged` while
+    /// Active or Paused, and 0 once Cancelled or Exhausted.
+    pub fn remaining_cap(env: Env, subscription_id: u64) -> Result<i128, Error> {
+        let sub = storage::read_sub(&env, subscription_id)?;
+        if sub.status.is_final() {
+            return Ok(0);
+        }
+        sub.total_cap
+            .checked_sub(sub.total_charged)
+            .ok_or(Error::Overflow)
+    }
+
+    /// Every subscription a subscriber has created, oldest first.
+    pub fn get_by_subscriber(env: Env, subscriber: Address) -> Result<Vec<Subscription>, Error> {
+        Self::load_indexed(&env, &DataKey::BySubscriber(subscriber))
+    }
+
+    /// Every subscription payable to a merchant, oldest first.
+    pub fn get_by_merchant(env: Env, merchant: Address) -> Result<Vec<Subscription>, Error> {
+        Self::load_indexed(&env, &DataKey::ByMerchant(merchant))
+    }
+
+    fn load_indexed(env: &Env, key: &DataKey) -> Result<Vec<Subscription>, Error> {
+        let mut out = Vec::new(env);
+        for id in storage::read_index(env, key).iter() {
+            out.push_back(storage::read_sub(env, id)?);
+        }
+        Ok(out)
     }
 }
 
