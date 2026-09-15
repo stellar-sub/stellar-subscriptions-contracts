@@ -7,12 +7,14 @@
 
 mod allowance;
 mod errors;
+mod events;
 mod storage;
 mod types;
 
 pub use errors::Error;
 pub use types::{SubStatus, Subscription};
 
+use events::{Cancelled, Charged, Paused, Resumed, Subscribed};
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
 
@@ -90,6 +92,17 @@ impl SubscriptionContract {
         allowance::sync(&env, &sub.subscriber, &sub.token)?;
 
         storage::bump_instance(&env);
+        Subscribed {
+            subscription_id: id,
+            subscriber: sub.subscriber,
+            merchant: sub.merchant,
+            token: sub.token,
+            amount_per_period,
+            interval_ledgers,
+            total_cap,
+            plan_id,
+        }
+        .publish(&env);
         Ok(id)
     }
 
@@ -161,6 +174,15 @@ impl SubscriptionContract {
         }
 
         storage::bump_instance(&env);
+        Charged {
+            subscription_id,
+            merchant: sub.merchant,
+            amount: sub.amount_per_period,
+            total_charged: sub.total_charged,
+            next_charge_ledger: sub.next_charge_ledger,
+            exhausted: sub.status == SubStatus::Exhausted,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -183,10 +205,20 @@ impl SubscriptionContract {
         storage::write_sub(&env, &sub);
 
         // Cancellation must succeed even if the token refuses the new
-        // allowance.
-        let _ = allowance::sync(&env, &sub.subscriber, &sub.token);
+        // allowance; the outcome is reported in the event instead.
+        let allowance_updated = allowance::sync(&env, &sub.subscriber, &sub.token).is_ok();
 
         storage::bump_instance(&env);
+        Cancelled {
+            subscription_id,
+            subscriber: sub.subscriber,
+            total_charged: sub.total_charged,
+            // Reporting only. total_charged <= total_cap always holds, and
+            // saturating keeps this line from ever blocking a cancel.
+            unused_cap: sub.total_cap.saturating_sub(sub.total_charged),
+            allowance_updated,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -219,6 +251,12 @@ impl SubscriptionContract {
         sub.status = SubStatus::Paused;
         storage::write_sub(&env, &sub);
         storage::bump_instance(&env);
+        Paused {
+            subscription_id,
+            subscriber,
+            ledger: env.ledger().sequence(),
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -241,6 +279,12 @@ impl SubscriptionContract {
         sub.next_charge_ledger = sub.next_charge_ledger.max(now);
         storage::write_sub(&env, &sub);
         storage::bump_instance(&env);
+        Resumed {
+            subscription_id,
+            subscriber,
+            next_charge_ledger: sub.next_charge_ledger,
+        }
+        .publish(&env);
         Ok(())
     }
 

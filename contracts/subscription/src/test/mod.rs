@@ -9,5 +9,6 @@ mod fuzz;
 mod allowance;
 mod auth;
 mod charge;
+mod events;
 mod validation;
 mod views;
