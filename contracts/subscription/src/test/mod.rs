@@ -10,5 +10,6 @@ mod allowance;
 mod auth;
 mod charge;
 mod events;
+mod integration;
 mod validation;
 mod views;
