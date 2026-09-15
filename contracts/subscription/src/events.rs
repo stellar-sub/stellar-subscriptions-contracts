@@ -68,6 +68,18 @@ pub struct Paused {
     pub ledger: u32,
 }
 
+/// A subscriber re-approved this contract for their outstanding cap in a
+/// token, with a fresh expiry.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllowanceRefreshed {
+    #[topic]
+    pub subscriber: Address,
+    #[topic]
+    pub token: Address,
+    pub amount: i128,
+}
+
 /// A subscriber resumed charging.
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]

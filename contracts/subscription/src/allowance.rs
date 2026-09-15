@@ -42,13 +42,14 @@ pub fn outstanding(env: &Env, subscriber: &Address, token: &Address) -> Result<i
 /// subscriber's behalf, valid for as long as the network allows.
 ///
 /// Requires the subscriber's authorization for the nested `approve` call, so
-/// it may only run inside a subscriber-authorized entry point.
-pub fn sync(env: &Env, subscriber: &Address, token: &Address) -> Result<(), Error> {
+/// it may only run inside a subscriber-authorized entry point. Returns the
+/// approved amount.
+pub fn sync(env: &Env, subscriber: &Address, token: &Address) -> Result<i128, Error> {
     let amount = outstanding(env, subscriber, token)?;
     let live_until = env.ledger().max_live_until_ledger();
     let spender = env.current_contract_address();
     match TokenClient::new(env, token).try_approve(subscriber, &spender, &amount, &live_until) {
-        Ok(Ok(())) => Ok(()),
+        Ok(Ok(())) => Ok(amount),
         _ => Err(Error::ApprovalFailed),
     }
 }

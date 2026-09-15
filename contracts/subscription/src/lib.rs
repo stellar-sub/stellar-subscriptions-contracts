@@ -346,6 +346,28 @@ impl SubscriptionContract {
         Ok(())
     }
 
+    /// Subscriber re-approves this contract for the cap still outstanding
+    /// across their open subscriptions in `token`, with a fresh expiry.
+    /// Returns the approved amount.
+    ///
+    /// Token allowances expire. A subscription that outlives its allowance
+    /// fails to charge with `TransferFailed` — changing no state — until its
+    /// subscriber calls this. It cannot raise any subscription's cap: the
+    /// amount is recomputed from contract state, and `charge` enforces each
+    /// cap itself regardless of the allowance.
+    pub fn refresh_allowance(env: Env, subscriber: Address, token: Address) -> Result<i128, Error> {
+        subscriber.require_auth();
+        let amount = allowance::sync(&env, &subscriber, &token)?;
+        storage::bump_instance(&env);
+        events::AllowanceRefreshed {
+            subscriber,
+            token,
+            amount,
+        }
+        .publish(&env);
+        Ok(amount)
+    }
+
     pub fn get_subscription(env: Env, subscription_id: u64) -> Result<Subscription, Error> {
         storage::read_sub(&env, subscription_id)
     }
