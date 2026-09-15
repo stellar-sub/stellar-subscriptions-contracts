@@ -29,9 +29,11 @@ command -v stellar >/dev/null || {
 }
 
 ensure_identity() {
+  # Prints only the address on stdout, because callers capture it; progress
+  # goes to stderr.
   local name="$1"
   if ! stellar keys address "$name" >/dev/null 2>&1; then
-    echo "==> Generating and funding identity '$name' on $NETWORK..."
+    echo "==> Generating and funding identity '$name' on $NETWORK..." >&2
     stellar keys generate "$name" --network "$NETWORK" --fund >/dev/null
   fi
   stellar keys address "$name"
