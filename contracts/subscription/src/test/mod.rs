@@ -11,5 +11,6 @@ mod auth;
 mod charge;
 mod events;
 mod integration;
+mod simulation_drift;
 mod validation;
 mod views;
