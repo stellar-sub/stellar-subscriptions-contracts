@@ -8,7 +8,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
-use crate::{Error, SubscriptionContract, SubscriptionContractClient, Subscription};
+use crate::{Error, Subscription, SubscriptionContract, SubscriptionContractClient};
 
 pub const AMOUNT: i128 = 100;
 pub const INTERVAL: u32 = 1_000;

@@ -92,7 +92,10 @@ fn is_chargeable_agrees_with_charge_at_every_step() {
 #[test]
 fn views_on_an_unknown_subscription_return_not_found() {
     let s = Setup::new();
-    expect_err(s.client.try_get_subscription(&7), Error::SubscriptionNotFound);
+    expect_err(
+        s.client.try_get_subscription(&7),
+        Error::SubscriptionNotFound,
+    );
     expect_err(s.client.try_remaining_cap(&7), Error::SubscriptionNotFound);
     expect_err(s.client.try_is_chargeable(&7), Error::SubscriptionNotFound);
 }
