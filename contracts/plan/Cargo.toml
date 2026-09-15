@@ -1,0 +1,19 @@
+[package]
+name = "plan"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Reusable merchant billing plans for Stellar subscriptions"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[features]
+testutils = ["soroban-sdk/testutils"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
