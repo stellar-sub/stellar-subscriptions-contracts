@@ -6,5 +6,6 @@ mod invariant_revocation;
 
 mod fuzz;
 
+mod allowance;
 mod auth;
 mod charge;
