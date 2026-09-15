@@ -118,6 +118,12 @@ say in the PR description how each point is satisfied.
 7. **No panics.** Return an `Error` variant; never `unwrap`, `expect`,
    `panic!` or `todo!` in contract code. Error codes are append-only.
 8. **Emit an event** for any new state change.
+9. **Keep signed nested calls stable across ledgers.** Wallets sign the
+   authorization tree they saw when simulating, and the transaction lands a
+   few ledgers later. Any argument of a nested call the subscriber signs
+   (such as the token `approve`) must not be derived from the exact current
+   ledger, or the call will pass simulation and fail on-chain. Add a case to
+   `test/simulation_drift.rs`.
 
 ### Worked example: `refresh_allowance`
 

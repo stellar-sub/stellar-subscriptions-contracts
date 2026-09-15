@@ -112,10 +112,22 @@ The allowance is defence in depth, not the enforcement: the three invariants
 are enforced by the contract's own checks and hold regardless of the
 allowance.
 
-Allowances expire. `subscribe` approves until the network's maximum
-(`max_live_until_ledger`). A subscription that outlives that must have
-`refresh_allowance` called by its subscriber, or charges will fail with
-`TransferFailed` — which changes no state, so nothing is lost.
+Allowances expire. The contract approves until the network's maximum entry
+lifetime, measured from the start of the current ~1-day window of 17,280
+ledgers. A subscription that outlives that must have `refresh_allowance`
+called by its subscriber, or charges will fail with `TransferFailed` — which
+changes no state, so nothing is lost.
+
+The window alignment matters for wallets. A subscriber signs the nested
+`approve` with exactly the arguments seen during simulation, and the
+transaction lands a few ledgers later. If the expiry were computed from the
+exact current ledger it would differ by then, the signature would not match,
+and `subscribe` would pass simulation but fail on-chain (this happened on
+Testnet before the fix). With alignment the expiry only changes when a window
+boundary falls between simulation and submission; that rare call fails
+cleanly with `ApprovalFailed` and can simply be retried.
+`test/simulation_drift.rs` covers `subscribe`, `cancel` and
+`refresh_allowance` signed several ledgers before they land.
 
 ## Plans
 
