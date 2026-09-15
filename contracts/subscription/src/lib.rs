@@ -164,11 +164,45 @@ impl SubscriptionContract {
         Ok(())
     }
 
-    /// Subscriber cancels.
+    /// Subscriber cancels. Final: no further charge will ever succeed.
+    ///
+    /// Allowed from Active or Paused. The status change is what enforces
+    /// REVOCATION — `charge` refuses anything that is not Active, and nothing
+    /// moves a subscription out of Cancelled. Lowering the token allowance
+    /// afterwards is clean-up only, and is never allowed to block the
+    /// cancellation itself.
     pub fn cancel(env: Env, subscriber: Address, subscription_id: u64) -> Result<(), Error> {
-        subscriber.require_auth();
-        storage::read_sub(&env, subscription_id)?;
+        let mut sub = Self::load_for_subscriber(&env, &subscriber, subscription_id)?;
+        match sub.status {
+            SubStatus::Active | SubStatus::Paused => {}
+            SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
+            SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+        }
+
+        sub.status = SubStatus::Cancelled;
+        storage::write_sub(&env, &sub);
+
+        // Cancellation must succeed even if the token refuses the new
+        // allowance.
+        let _ = allowance::sync(&env, &sub.subscriber, &sub.token);
+
+        storage::bump_instance(&env);
         Ok(())
+    }
+
+    /// Require the subscriber's signature and that they own the
+    /// subscription.
+    fn load_for_subscriber(
+        env: &Env,
+        subscriber: &Address,
+        subscription_id: u64,
+    ) -> Result<Subscription, Error> {
+        subscriber.require_auth();
+        let sub = storage::read_sub(env, subscription_id)?;
+        if sub.subscriber != *subscriber {
+            return Err(Error::NotSubscriber);
+        }
+        Ok(sub)
     }
 
     /// Subscriber pauses charging.
