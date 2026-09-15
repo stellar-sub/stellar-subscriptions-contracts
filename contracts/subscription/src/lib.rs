@@ -5,6 +5,8 @@
 //! revocable authorization once; the merchant then pulls a fixed amount per
 //! billing interval.
 
+mod errors;
 mod types;
 
+pub use errors::Error;
 pub use types::{SubStatus, Subscription};
