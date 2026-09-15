@@ -42,4 +42,6 @@ pub enum Error {
     /// The token refused the transfer (e.g. insufficient balance or
     /// allowance). No state was changed.
     TransferFailed = 19,
+    /// The token refused the allowance that backs the subscription.
+    ApprovalFailed = 20,
 }
