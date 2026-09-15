@@ -205,17 +205,42 @@ impl SubscriptionContract {
         Ok(sub)
     }
 
-    /// Subscriber pauses charging.
+    /// Subscriber pauses charging. Only an Active subscription can be paused.
+    /// The cap, the charges so far and the token allowance are untouched.
     pub fn pause(env: Env, subscriber: Address, subscription_id: u64) -> Result<(), Error> {
-        subscriber.require_auth();
-        storage::read_sub(&env, subscription_id)?;
+        let mut sub = Self::load_for_subscriber(&env, &subscriber, subscription_id)?;
+        match sub.status {
+            SubStatus::Active => {}
+            SubStatus::Paused => return Err(Error::AlreadyPaused),
+            SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
+            SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+        }
+
+        sub.status = SubStatus::Paused;
+        storage::write_sub(&env, &sub);
+        storage::bump_instance(&env);
         Ok(())
     }
 
-    /// Subscriber resumes charging.
+    /// Subscriber resumes a paused subscription.
+    ///
+    /// The schedule never moves earlier and paused periods are never billed:
+    /// if the next charge was not yet due it stays where it was; if it fell
+    /// due while paused, exactly one charge becomes available now.
     pub fn resume(env: Env, subscriber: Address, subscription_id: u64) -> Result<(), Error> {
-        subscriber.require_auth();
-        storage::read_sub(&env, subscription_id)?;
+        let mut sub = Self::load_for_subscriber(&env, &subscriber, subscription_id)?;
+        match sub.status {
+            SubStatus::Paused => {}
+            SubStatus::Active => return Err(Error::NotPaused),
+            SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
+            SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+        }
+
+        let now = env.ledger().sequence();
+        sub.status = SubStatus::Active;
+        sub.next_charge_ledger = sub.next_charge_ledger.max(now);
+        storage::write_sub(&env, &sub);
+        storage::bump_instance(&env);
         Ok(())
     }
 
