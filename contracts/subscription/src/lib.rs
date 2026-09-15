@@ -125,3 +125,6 @@ impl SubscriptionContract {
         storage::read_sub(&env, subscription_id)
     }
 }
+
+#[cfg(test)]
+mod test;
