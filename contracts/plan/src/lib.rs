@@ -4,6 +4,7 @@
 //! Merchants publish reusable billing terms that subscribers subscribe to.
 
 mod errors;
+mod storage;
 mod types;
 
 pub use errors::Error;
