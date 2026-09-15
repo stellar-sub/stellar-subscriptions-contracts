@@ -4,6 +4,7 @@
 //! A read-optimised index of plans and subscriptions with aggregate stats.
 
 mod errors;
+mod storage;
 mod types;
 
 pub use errors::Error;
