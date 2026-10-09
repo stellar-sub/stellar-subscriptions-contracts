@@ -41,6 +41,42 @@ Created by `DEMO=1 ./scripts/deploy.sh` with native XLM
 | INTERVAL check | A second charge in the same interval was submitted and rejected on-chain |
 | Registry stats | 1 plan, 1 subscription, 1 active, volume 10,000,000 |
 
+### Invariants proven on Testnet
+
+`scripts/verify-testnet.sh` tries to break each invariant against the live
+contracts above and checks the contract refuses with the right error code.
+Run on 2026-10-09: **20 of 20 checks pass.**
+
+| Invariant | Attempt | Result |
+|---|---|---|
+| INTERVAL | Second charge in the same interval | Rejected, error #11 |
+| INTERVAL | Charge right after pause then resume | Rejected, error #11 (resume doesn't pull the schedule earlier) |
+| pause | Charge while paused | Rejected, error #15 |
+| auth | Merchant cancels on the subscriber's behalf | Rejected, error #10 |
+| REVOCATION | Charge after the subscriber cancels | Rejected, error #14 |
+| REVOCATION | Resume, pause, or cancel again after cancel | Each rejected, error #14 |
+| CAP | Third charge on a 2.5-charge cap | Rejected, error #12; 0.5 XLM of cap left and never chargeable |
+
+Rejected calls are caught when the CLI simulates them, so nothing is
+submitted for those: the rejection is the contract's own answer. The
+successful calls from that run are real transactions:
+
+| Step | Transaction |
+|---|---|
+| First charge (subscription 4) | [`0fb2b359…8824`](https://stellar.expert/explorer/testnet/tx/0fb2b359b234a52d1490d86dea24ee1487ac5fc53a80e9db0e941ec7de3f8824) |
+| Subscriber pauses | [`8f4e1b38…7f52`](https://stellar.expert/explorer/testnet/tx/8f4e1b38b8e40ccb851830fe7554b5c6304639b5612bd26a915298e1d8c47f52) |
+| Subscriber resumes | [`0bb44077…bb6a`](https://stellar.expert/explorer/testnet/tx/0bb44077fbf3b6a000f1a3af63b7d339da6f731cb95ba803e61a30070dc2bb6a) |
+| Subscriber cancels | [`5100ff53…036b`](https://stellar.expert/explorer/testnet/tx/5100ff53749c0e1af988ee99bb6bb64cde7c52650c47252aafa921cdbee8036b) |
+| Charge 1 of 2 (subscription 5) | [`622abc81…da4d`](https://stellar.expert/explorer/testnet/tx/622abc8146f2da38c62ba651b084187018e8d859f489c2a2603a82cc06c3da4d) |
+| Charge 2 of 2 (subscription 5) | [`493ea168…8f69`](https://stellar.expert/explorer/testnet/tx/493ea168d8ae6e5e45dd77be782a9200eaaf5e2bec34b694c535b42c4bff8f69) |
+| Subscriber cancels the leftover | [`68c14426…4ae1`](https://stellar.expert/explorer/testnet/tx/68c14426f4cd8d3b8f7900e3a7c18d01cb0ff6bcd3587561a1540ef866b04ae1) |
+
+Subscriptions 2 to 5 on this deployment are test artifacts from running that
+script twice. The first run's contract checks all passed, but four of its
+result checks failed because of a parsing bug in the script itself (fixed in
+the same change); subscriptions 4 and 5 are from the clean run. Subscription
+1 is the demo subscription from deployment and is still active.
+
 ### Verify
 
 ```bash
