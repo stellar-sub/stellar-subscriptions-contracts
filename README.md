@@ -74,8 +74,8 @@ Testnet contract ids are in [DEPLOYMENTS.md](DEPLOYMENTS.md).
 
 ## Sister repositories
 
-- Web app: https://github.com/YOUR-ORG/stellar-subscriptions-web
-- API + Docs: https://github.com/YOUR-ORG/stellar-subscriptions-api-docs
+- Web app: https://github.com/stellar-sub/stellar-subscriptions-web
+- API + Docs: https://github.com/stellar-sub/stellar-subscriptions-api-docs
 
 ## Contributing
 

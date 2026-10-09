@@ -19,7 +19,7 @@ for changes to the subscription contract is high. Please read
 3. **Clone and test.**
 
    ```bash
-   git clone https://github.com/YOUR-ORG/stellar-subscriptions-contracts
+   git clone https://github.com/stellar-sub/stellar-subscriptions-contracts
    cd stellar-subscriptions-contracts
    make test
    ```
@@ -163,5 +163,5 @@ Token allowances expire, so long subscriptions need a way to renew theirs.
 
 ## Sister repositories
 
-- Web app: https://github.com/YOUR-ORG/stellar-subscriptions-web
-- API + Docs: https://github.com/YOUR-ORG/stellar-subscriptions-api-docs
+- Web app: https://github.com/stellar-sub/stellar-subscriptions-web
+- API + Docs: https://github.com/stellar-sub/stellar-subscriptions-api-docs
