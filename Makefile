@@ -1,4 +1,4 @@
-.PHONY: build wasm test clippy fmt fmt-check check clean deploy
+.PHONY: build wasm test clippy fmt fmt-check check clean deploy verify
 
 NETWORK ?= testnet
 IDENTITY ?= subs-deployer
@@ -33,3 +33,8 @@ clean:
 # Deploy, initialize and wire all three contracts.
 deploy:
 	NETWORK=$(NETWORK) IDENTITY=$(IDENTITY) ./scripts/deploy.sh
+
+# Prove CAP, INTERVAL and REVOCATION against the live deployment
+# (run `DEMO=1 make deploy` first).
+verify:
+	NETWORK=$(NETWORK) ./scripts/verify-testnet.sh
