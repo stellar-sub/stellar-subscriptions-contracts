@@ -36,6 +36,8 @@ for changes to the subscription contract is high. Please read
 | Build wasm (CLI) | `make build` |
 | Build wasm (cargo only, as CI does) | `make wasm` |
 | Everything CI checks | `make check` |
+| Fuzz deeper than the default | `PROPTEST_CASES=500 cargo test -p subscription fuzz` |
+| Prove the invariants on the live deployment | `make verify` (after `DEMO=1 make deploy`) |
 | Deploy to Testnet | `make deploy` |
 
 `make deploy` runs `scripts/deploy.sh`, which creates and funds a
