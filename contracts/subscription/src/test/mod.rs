@@ -10,6 +10,7 @@ mod allowance;
 mod auth;
 mod charge;
 mod events;
+mod hostile_token;
 mod integration;
 mod simulation_drift;
 mod validation;
