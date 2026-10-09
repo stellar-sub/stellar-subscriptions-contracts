@@ -28,8 +28,17 @@ fn action() -> impl Strategy<Value = Action> {
     ]
 }
 
+/// Cases per run: 48 locally, overridable with `PROPTEST_CASES` so CI can fuzz
+/// far deeper than a developer wants to wait for.
+fn fuzz_cases() -> u32 {
+    std::env::var("PROPTEST_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(48)
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 48, ..ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig { cases: fuzz_cases(), ..ProptestConfig::default() })]
 
     #[test]
     fn invariants_hold_for_any_sequence_of_actions(
