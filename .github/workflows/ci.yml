@@ -40,6 +40,30 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
 
+  # The invariant fuzz test runs 48 cases locally. Here it runs far deeper, in
+  # its own job so a slow run never hides a failing unit test.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        run: rustup show
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-fuzz-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Fuzz CAP, INTERVAL and REVOCATION (500 cases)
+        env:
+          PROPTEST_CASES: "500"
+        run: cargo test -p subscription fuzz
+
   build-wasm:
     runs-on: ubuntu-latest
     steps:
