@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL, START_BALANCE};
-use crate::{events::AllowanceRefreshed, Error};
+use crate::{events::AllowanceRefreshed, Error, SubStatus};
 
 #[test]
 fn subscribe_approves_exactly_the_authorized_cap() {
@@ -168,4 +168,74 @@ fn refresh_allowance_requires_the_subscribers_signature() {
         .try_refresh_allowance(&s.subscriber, &s.token.address);
     assert!(result.is_err());
     assert_eq!(s.allowance(), 0);
+}
+
+#[test]
+fn zeroing_the_token_allowance_stops_charges_without_cancelling() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.charge(&s.merchant, &id);
+
+    // The subscriber can also withdraw the spending permission directly on
+    // the token, without touching the subscription.
+    s.token
+        .approve(&s.subscriber, &s.client.address, &0, &(s.ledger() + 1_000));
+    s.advance(INTERVAL);
+
+    // The charge fails and changes nothing: it does not count against the
+    // cap or the schedule, and the subscription is still Active.
+    let before = s.snapshot(id);
+    expect_err(s.client.try_charge(&s.merchant, &id), Error::TransferFailed);
+    assert_eq!(s.snapshot(id), before);
+    assert_eq!(s.sub(id).status, SubStatus::Active);
+    assert_eq!(s.balance(&s.merchant), AMOUNT);
+}
+
+#[test]
+fn an_allowance_below_one_period_blocks_charges_until_it_is_restored() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.token.approve(
+        &s.subscriber,
+        &s.client.address,
+        &(AMOUNT - 1),
+        &(s.ledger() + 1_000),
+    );
+
+    let before = s.snapshot(id);
+    expect_err(s.client.try_charge(&s.merchant, &id), Error::TransferFailed);
+    assert_eq!(s.snapshot(id), before);
+
+    // Restoring the allowance restores charging, on the same schedule: the
+    // failed attempt consumed nothing.
+    s.client.refresh_allowance(&s.subscriber, &s.token.address);
+    s.client.charge(&s.merchant, &id);
+    assert_eq!(s.sub(id).total_charged, AMOUNT);
+    assert_eq!(s.sub(id).next_charge_ledger, s.ledger() + INTERVAL);
+}
+
+#[test]
+fn a_charge_can_never_exceed_the_allowance_even_if_the_cap_would_allow_it() {
+    let s = Setup::new();
+    // Cap of 12 periods, but the subscriber only leaves permission for two.
+    let id = s.subscribe();
+    s.token.approve(
+        &s.subscriber,
+        &s.client.address,
+        &(2 * AMOUNT),
+        &(s.ledger() + 100_000),
+    );
+
+    let mut charged = 0;
+    for _ in 0..6 {
+        if s.client.try_charge(&s.merchant, &id).is_ok() {
+            charged += 1;
+        }
+        s.advance(INTERVAL);
+    }
+
+    // The tighter of the two limits wins.
+    assert_eq!(charged, 2);
+    assert_eq!(s.sub(id).total_charged, 2 * AMOUNT);
+    assert_eq!(s.balance(&s.merchant), 2 * AMOUNT);
 }
