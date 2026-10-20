@@ -6,10 +6,14 @@ use registry::{
     RegistryContract, RegistryContractClient, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED,
     STATUS_PAUSED,
 };
-use soroban_sdk::{testutils::Address as _, Address, String};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    Address, Event, String,
+};
 
+use super::mock_registry::{MockRegistry, MockRegistryClient};
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
-use crate::Error;
+use crate::{events::Cancelled, Error};
 
 struct Linked {
     s: Setup,
@@ -304,4 +308,49 @@ fn a_misconfigured_registry_blocks_subscribe_instead_of_losing_the_record() {
         Error::RegistryUpdateFailed,
     );
     assert_eq!(s.allowance(), 0);
+}
+
+#[test]
+fn cancel_with_a_broken_registry_reports_registry_updated_false_and_still_cancels() {
+    // Build the world: subscription contract linked to a mock registry that
+    // will be armed to fail after the first subscription is in place.
+    let s = Setup::new();
+    let mock_reg = MockRegistryClient::new(&s.env, &s.env.register(MockRegistry, ()));
+    s.client.set_registry(&s.admin, &mock_reg.address);
+
+    let id = s.subscribe();
+
+    // Arm the mock so the next registry write panics.
+    mock_reg.arm();
+
+    // cancel() must succeed even though the registry refuses the update.
+    s.client.cancel(&s.subscriber, &id);
+
+    // Read the emitted event before any further state queries.
+    let emitted = s.env.events().all().filter_by_contract(&s.client.address);
+
+    // REVOCATION: the subscription is definitively cancelled.
+    assert_eq!(s.sub(id).status, crate::SubStatus::Cancelled);
+
+    // The event must record registry_updated: false (and allowance_updated:
+    // true because the real SAC token did lower the allowance).
+    assert_eq!(
+        emitted,
+        [Cancelled {
+            subscription_id: id,
+            subscriber: s.subscriber.clone(),
+            total_charged: 0,
+            unused_cap: CAP,
+            allowance_updated: true,
+            registry_updated: false,
+        }
+        .to_xdr(&s.env, &s.client.address)]
+    );
+
+    // REVOCATION still holds: a charge afterwards is rejected.
+    s.advance(INTERVAL);
+    expect_err(
+        s.client.try_charge(&s.merchant, &id),
+        Error::SubscriptionCancelled,
+    );
 }
