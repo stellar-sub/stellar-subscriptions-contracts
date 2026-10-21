@@ -210,3 +210,6 @@ impl RegistryContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod fold_proptest;
