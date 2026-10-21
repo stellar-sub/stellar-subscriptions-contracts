@@ -8,8 +8,8 @@ use soroban_sdk::{
 };
 
 use crate::{
-    Error, RegistryContract, RegistryContractClient, RegistryStats, SubscriptionRecord,
-    STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
+    Error, MerchantStats, RegistryContract, RegistryContractClient, RegistryStats,
+    SubscriptionRecord, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
 };
 
 struct Setup {
@@ -324,4 +324,89 @@ fn only_the_plan_contract_can_register_plans() {
         .try_register_plan(&1);
     assert!(result.is_err());
     assert_eq!(s.stats().total_plans, 0);
+}
+
+#[test]
+fn merchant_stats_equal_recomputation_from_merchant_records_single_merchant() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    s.client.update_subscription(&1, &100, &STATUS_ACTIVE);
+    s.client.update_subscription(&2, &200, &STATUS_ACTIVE);
+
+    let stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.subscriptions, 2);
+    assert_eq!(stats.active_subscriptions, 2);
+    assert_eq!(stats.total_charged_volume, 300);
+}
+
+#[test]
+fn merchant_stats_are_independent_across_merchants() {
+    let s = Setup::new();
+    let other_merchant = Address::generate(&s.env);
+    s.register(1);
+    s.client
+        .register_subscription(&2, &s.subscriber, &other_merchant);
+    s.client.update_subscription(&1, &100, &STATUS_ACTIVE);
+    s.client.update_subscription(&2, &200, &STATUS_ACTIVE);
+
+    let merchant_stats = s.client.get_merchant_stats(&s.merchant);
+    let other_stats = s.client.get_merchant_stats(&other_merchant);
+
+    assert_eq!(merchant_stats.subscriptions, 1);
+    assert_eq!(merchant_stats.total_charged_volume, 100);
+    assert_eq!(other_stats.subscriptions, 1);
+    assert_eq!(other_stats.total_charged_volume, 200);
+}
+
+#[test]
+fn merchant_stats_track_active_subscriptions() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    s.register(3);
+
+    let mut stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.active_subscriptions, 3);
+
+    s.client.update_subscription(&1, &0, &STATUS_PAUSED);
+    stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.active_subscriptions, 2);
+
+    s.client.update_subscription(&1, &0, &STATUS_ACTIVE);
+    stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.active_subscriptions, 3);
+
+    s.client.update_subscription(&2, &0, &STATUS_CANCELLED);
+    stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.active_subscriptions, 2);
+
+    s.client.update_subscription(&3, &0, &STATUS_EXHAUSTED);
+    stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.active_subscriptions, 1);
+}
+
+#[test]
+fn merchant_stats_accumulate_volume_incrementally() {
+    let s = Setup::new();
+    s.register(1);
+
+    let mut stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.total_charged_volume, 0);
+
+    s.client.update_subscription(&1, &100, &STATUS_ACTIVE);
+    stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.total_charged_volume, 100);
+
+    s.client.update_subscription(&1, &250, &STATUS_ACTIVE);
+    stats = s.client.get_merchant_stats(&s.merchant);
+    assert_eq!(stats.total_charged_volume, 250);
+}
+
+#[test]
+fn merchant_stats_start_zero_for_unknown_merchant() {
+    let s = Setup::new();
+    let unknown = Address::generate(&s.env);
+    let stats = s.client.get_merchant_stats(&unknown);
+    assert_eq!(stats, MerchantStats::default());
 }

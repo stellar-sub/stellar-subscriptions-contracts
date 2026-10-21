@@ -54,6 +54,19 @@ impl Setup {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &None,
+        )
+    }
+
+    fn create_with_description(&self, merchant: &Address, name: &str, description: &str) -> u64 {
+        self.client.create_plan(
+            merchant,
+            &self.name(name),
+            &self.token,
+            &AMOUNT,
+            &INTERVAL,
+            &CAP,
+            &Some(String::from_str(&self.env, description)),
         )
     }
 
@@ -74,6 +87,7 @@ impl Setup {
                 &amount,
                 &interval,
                 &cap,
+                &None,
             ),
             expected,
         );
@@ -135,8 +149,26 @@ fn create_plan_stores_every_field() {
             default_cap: CAP,
             active: true,
             created_at: 1_000,
+            description: None,
         }
     );
+}
+
+#[test]
+fn create_plan_with_description_stores_it() {
+    let s = Setup::new();
+    let id = s.create_with_description(&s.merchant, "Pro monthly", "Best plan available");
+    let plan = s.client.get_plan(&id);
+    assert_eq!(plan.id, id);
+    assert_eq!(plan.description, Some(s.name("Best plan available")));
+}
+
+#[test]
+fn existing_plans_without_description_decode_with_none() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "Basic");
+    let plan = s.client.get_plan(&id);
+    assert_eq!(plan.description, None);
 }
 
 #[test]
@@ -334,4 +366,57 @@ fn deactivate_plan_emits_plan_deactivated() {
         s.env.events().all().filter_by_contract(&s.client.address),
         [expected.to_xdr(&s.env, &s.client.address)]
     );
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_returns_none() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+
+    assert!(s.client.get_inactive_plans_by_merchant(&s.merchant).is_empty());
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 0);
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_returns_some() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    s.client.deactivate_plan(&s.merchant, &a);
+    s.client.deactivate_plan(&s.merchant, &c);
+
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&s.merchant)), [a, c]);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 2);
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_returns_all() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    s.client.deactivate_plan(&s.merchant, &a);
+    s.client.deactivate_plan(&s.merchant, &b);
+    s.client.deactivate_plan(&s.merchant, &c);
+
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&s.merchant)), [a, b, c]);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 3);
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_excludes_other_merchants() {
+    let s = Setup::new();
+    let other = Address::generate(&s.env);
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&other, "B");
+    let c = s.create(&s.merchant, "C");
+    s.client.deactivate_plan(&s.merchant, &a);
+    s.client.deactivate_plan(&other, &b);
+
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&s.merchant)), [a]);
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&other)), [b]);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 1);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&other), 1);
 }

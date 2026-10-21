@@ -99,6 +99,7 @@ impl PlanContract {
         amount_per_period: i128,
         interval_ledgers: u32,
         default_cap: i128,
+        description: Option<String>,
     ) -> Result<u64, Error> {
         storage::read_admin(&env)?;
         merchant.require_auth();
@@ -127,6 +128,7 @@ impl PlanContract {
             default_cap,
             active: true,
             created_at: env.ledger().sequence(),
+            description,
         };
         storage::write_plan(&env, &plan);
         storage::push_index(&env, DataKey::ByMerchant(plan.merchant.clone()), id);
@@ -195,6 +197,33 @@ impl PlanContract {
             }
         }
         Ok(out)
+    }
+
+    /// Every inactive plan a merchant created, oldest first.
+    pub fn get_inactive_plans_by_merchant(env: Env, merchant: Address) -> Result<Vec<Plan>, Error> {
+        let mut out = Vec::new(&env);
+        for id in storage::read_index(&env, &DataKey::ByMerchant(merchant)).iter() {
+            let plan = storage::read_plan(&env, id)?;
+            if !plan.active {
+                out.push_back(plan);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Count of inactive plans created by a merchant.
+    pub fn get_inactive_plans_by_merchant_count(
+        env: Env,
+        merchant: Address,
+    ) -> Result<u32, Error> {
+        let mut count = 0u32;
+        for id in storage::read_index(&env, &DataKey::ByMerchant(merchant)).iter() {
+            let plan = storage::read_plan(&env, id)?;
+            if !plan.active {
+                count += 1;
+            }
+        }
+        Ok(count)
     }
 }
 

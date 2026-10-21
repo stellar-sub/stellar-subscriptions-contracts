@@ -246,6 +246,7 @@ impl SubscriptionContract {
         Charged {
             subscription_id,
             merchant: sub.merchant,
+            token: sub.token,
             amount: sub.amount_per_period,
             total_charged: sub.total_charged,
             next_charge_ledger: sub.next_charge_ledger,

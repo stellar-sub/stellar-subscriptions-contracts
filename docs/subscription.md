@@ -153,7 +153,7 @@ succeeds and reports the outcome in the event's `registry_updated` flag.
 | Event | Topics | Data |
 |---|---|---|
 | `subscribed` | subscription_id, subscriber, merchant | token, amount_per_period, interval_ledgers, total_cap, plan_id |
-| `charged` | subscription_id, merchant | amount, total_charged, next_charge_ledger, exhausted |
+| `charged` | subscription_id, merchant | token, amount, total_charged, next_charge_ledger, exhausted |
 | `cancelled` | subscription_id, subscriber | total_charged, unused_cap, allowance_updated, registry_updated |
 | `paused` | subscription_id, subscriber | ledger |
 | `resumed` | subscription_id, subscriber | next_charge_ledger |
