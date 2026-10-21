@@ -23,6 +23,9 @@ pub enum DataKey {
     BySubscriber(Address),
     /// Persistent: ids of every subscription payable to a merchant.
     ByMerchant(Address),
+    /// Persistent: ids of every subscription created from a plan. Written only
+    /// for plan subscriptions, so ad-hoc subscriptions add no writes.
+    ByPlan(u64),
     /// Instance: linked plan contract, if any.
     PlanContract,
     /// Instance: linked registry contract, if any.

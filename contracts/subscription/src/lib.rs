@@ -147,6 +147,9 @@ impl SubscriptionContract {
         storage::write_sub(&env, &sub);
         storage::push_index(&env, DataKey::BySubscriber(sub.subscriber.clone()), id);
         storage::push_index(&env, DataKey::ByMerchant(sub.merchant.clone()), id);
+        if plan_id != 0 {
+            storage::push_index(&env, DataKey::ByPlan(plan_id), id);
+        }
 
         // After the write, so the new subscription's cap is included.
         allowance::sync(&env, &sub.subscriber, &sub.token)?;
@@ -443,6 +446,24 @@ impl SubscriptionContract {
     pub fn count_by_merchant(env: Env, merchant: Address) -> u32 {
         storage::read_index(&env, &DataKey::ByMerchant(merchant)).len()
     }
+
+    /// One page of the subscriptions created from a plan, oldest first. `start`
+    /// and `limit` work as in `get_by_merchant_page`. Ad-hoc subscriptions
+    /// (plan id 0) are never listed here.
+    pub fn get_by_plan_page(
+        env: Env,
+        plan_id: u64,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Subscription>, Error> {
+        Self::load_page(&env, &DataKey::ByPlan(plan_id), start, limit)
+    }
+
+    /// How many subscriptions were created from a plan. Reads only the index.
+    pub fn count_by_plan(env: Env, plan_id: u64) -> u32 {
+        storage::read_index(&env, &DataKey::ByPlan(plan_id)).len()
+    }
+
 
     // ---- internal helpers ----
 
