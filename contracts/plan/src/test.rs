@@ -322,6 +322,24 @@ fn create_plan_emits_plan_created() {
 }
 
 #[test]
+fn get_active_plans_is_empty_before_any_plan_then_follows_creation_order() {
+    let s = Setup::new();
+    assert!(s.client.get_active_plans().is_empty());
+
+    let a = s.create(&s.merchant, "a");
+    let b = s.create(&s.merchant, "b");
+    let c = s.create(&s.merchant, "c");
+    assert_eq!(ids(s.client.get_active_plans()), std::vec![a, b, c]);
+
+    s.client.deactivate_plan(&s.merchant, &b);
+    assert_eq!(ids(s.client.get_active_plans()), std::vec![a, c]);
+
+    // A plan created after a deactivation goes to the end of the list.
+    let d = s.create(&s.merchant, "d");
+    assert_eq!(ids(s.client.get_active_plans()), std::vec![a, c, d]);
+}
+
+#[test]
 fn deactivate_plan_emits_plan_deactivated() {
     let s = Setup::new();
     let id = s.create(&s.merchant, "Pro");
