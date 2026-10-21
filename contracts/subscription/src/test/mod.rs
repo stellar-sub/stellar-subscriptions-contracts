@@ -12,6 +12,7 @@ mod charge;
 mod events;
 mod hostile_token;
 mod integration;
+mod due_views;
 mod merchant_pages;
 mod plan_index;
 mod simulation_drift;

@@ -24,6 +24,10 @@ use storage::DataKey;
 /// this, so a single read stays within the network's resource limits.
 pub const MAX_PAGE_LIMIT: u32 = 50;
 
+/// Most index entries one `due_for_merchant` call reads, whether or not they
+/// are due. Bounds the read cost of a call when few subscriptions are due.
+pub const MAX_SCAN: u32 = 200;
+
 #[contract]
 pub struct SubscriptionContract;
 
@@ -464,6 +468,42 @@ impl SubscriptionContract {
         storage::read_index(&env, &DataKey::ByPlan(plan_id)).len()
     }
 
+    /// Ids of the merchant's subscriptions that `is_chargeable` reports as due
+    /// now, read from the merchant's index starting at position `start`.
+    ///
+    /// Returns the due ids found and the position to resume from, or `None`
+    /// once the index is exhausted. One call reads at most `MAX_SCAN` index
+    /// entries, so it can return fewer than `limit` ids while more remain.
+    /// Keep calling with the returned position until it is `None`. The result
+    /// is a snapshot, so a `charge` on a returned id can still fail. `limit` is
+    /// clamped to between 1 and `MAX_PAGE_LIMIT`.
+    pub fn due_for_merchant(
+        env: Env,
+        merchant: Address,
+        start: u32,
+        limit: u32,
+    ) -> (Vec<u64>, Option<u32>) {
+        let ids = storage::read_index(&env, &DataKey::ByMerchant(merchant));
+        let limit = limit.clamp(1, MAX_PAGE_LIMIT);
+        let mut due = Vec::new(&env);
+        let mut position = start;
+        let mut scanned: u32 = 0;
+        while position < ids.len() && scanned < MAX_SCAN && due.len() < limit {
+            if let Some(id) = ids.get(position) {
+                if Self::is_chargeable(env.clone(), id).unwrap_or(false) {
+                    due.push_back(id);
+                }
+            }
+            position += 1;
+            scanned += 1;
+        }
+        let next = if position < ids.len() {
+            Some(position)
+        } else {
+            None
+        };
+        (due, next)
+    }
 
     // ---- internal helpers ----
 
