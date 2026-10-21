@@ -20,11 +20,25 @@ use interfaces::{PlanClient, RegistryClient};
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
 
+/// Version of this contract's behaviour and storage layout. Bump it on any
+/// change to storage layout or to how an entrypoint behaves, so clients and
+/// indexers can tell which behaviour a deployed contract has.
+pub const VERSION: u32 = 1;
+
+/// Most subscriptions one paged read returns. Larger `limit`s are capped to
+/// this, so a single read stays within the network's resource limits.
+pub const MAX_PAGE_LIMIT: u32 = 50;
+
 #[contract]
 pub struct SubscriptionContract;
 
 #[contractimpl]
 impl SubscriptionContract {
+    /// The version of the deployed contract. See [`VERSION`].
+    pub fn version(_env: Env) -> u32 {
+        VERSION
+    }
+
     /// Set the admin. Callable once.
     ///
     /// The admin can only link the plan and registry contracts, once each,
@@ -404,9 +418,23 @@ impl SubscriptionContract {
             .ok_or(Error::Overflow)
     }
 
-    /// Every subscription a subscriber has created, oldest first.
+    /// Every subscription a subscriber has created, oldest first. Reads the
+    /// whole history, so for subscribers with many subscriptions use
+    /// `get_by_subscriber_page`.
     pub fn get_by_subscriber(env: Env, subscriber: Address) -> Result<Vec<Subscription>, Error> {
         Self::load_indexed(&env, &DataKey::BySubscriber(subscriber))
+    }
+
+    /// One page of the subscriptions a subscriber has created, oldest first.
+    /// `start` is the position of the first item. `limit` is capped at
+    /// [`MAX_PAGE_LIMIT`]. A page past the end is empty.
+    pub fn get_by_subscriber_page(
+        env: Env,
+        subscriber: Address,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Subscription>, Error> {
+        Self::load_page(&env, &DataKey::BySubscriber(subscriber), start, limit)
     }
 
     /// Every subscription payable to a merchant, oldest first.
@@ -483,6 +511,19 @@ impl SubscriptionContract {
             return Err(Error::RegistryUpdateFailed);
         }
         Ok(())
+    }
+
+    fn load_page(env: &Env, key: &DataKey, start: u32, limit: u32) -> Result<Vec<Subscription>, Error> {
+        let ids = storage::read_index(env, key);
+        let end = start
+            .saturating_add(limit.min(MAX_PAGE_LIMIT))
+            .min(ids.len());
+        let mut out = Vec::new(env);
+        for index in start..end {
+            let id = ids.get(index).ok_or(Error::SubscriptionNotFound)?;
+            out.push_back(storage::read_sub(env, id)?);
+        }
+        Ok(out)
     }
 
     fn load_indexed(env: &Env, key: &DataKey) -> Result<Vec<Subscription>, Error> {
