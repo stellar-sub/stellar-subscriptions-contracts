@@ -5,7 +5,7 @@ use soroban_sdk::{testutils::Events as _, Event};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
 use crate::{
-    events::{Cancelled, Charged, Paused, Resumed, Subscribed},
+    events::{AllowanceRefreshed, Cancelled, Charged, Paused, Resumed, Subscribed},
     Error,
 };
 
@@ -124,6 +124,21 @@ fn resume_emits_resumed_with_the_next_charge_ledger() {
             subscription_id: id,
             subscriber: s.subscriber.clone(),
             next_charge_ledger: now,
+        },
+    );
+}
+
+#[test]
+fn refresh_allowance_emits_allowance_refreshed_with_the_outstanding_cap() {
+    let s = Setup::new();
+    s.subscribe();
+    s.client.refresh_allowance(&s.subscriber, &s.token.address);
+    assert_only_event(
+        &s,
+        AllowanceRefreshed {
+            subscriber: s.subscriber.clone(),
+            token: s.token.address.clone(),
+            amount: CAP,
         },
     );
 }
