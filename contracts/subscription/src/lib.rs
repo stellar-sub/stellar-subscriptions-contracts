@@ -20,6 +20,10 @@ use interfaces::{PlanClient, RegistryClient};
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
 
+/// Most subscriptions one `batch_charge` call may charge, so a batch stays
+/// within the per-transaction write budget.
+pub const MAX_BATCH: u32 = 20;
+
 #[contract]
 pub struct SubscriptionContract;
 
@@ -252,6 +256,23 @@ impl SubscriptionContract {
             exhausted: sub.status == SubStatus::Exhausted,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    /// Charge several of the merchant's subscriptions in one transaction.
+    ///
+    /// Every id goes through the full `charge` checks (CAP, INTERVAL and
+    /// REVOCATION). The batch is all or nothing: the first id that fails returns
+    /// its error and the whole call is rolled back, so nothing is charged. A
+    /// repeated id fails on its second charge, because the interval has not
+    /// elapsed. At most `MAX_BATCH` ids are accepted.
+    pub fn batch_charge(env: Env, merchant: Address, ids: Vec<u64>) -> Result<(), Error> {
+        if ids.len() > MAX_BATCH {
+            return Err(Error::BatchTooLarge);
+        }
+        for id in ids.iter() {
+            Self::charge(env.clone(), merchant.clone(), id)?;
+        }
         Ok(())
     }
 

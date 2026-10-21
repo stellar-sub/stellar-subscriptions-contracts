@@ -8,6 +8,7 @@ mod fuzz;
 
 mod allowance;
 mod auth;
+mod batch_charge;
 mod charge;
 mod events;
 mod hostile_token;
