@@ -368,6 +368,27 @@ fn set_registry_is_admin_only_once_and_refused_after_the_first_plan() {
 }
 
 #[test]
+fn a_failing_registry_stops_plan_creation_and_consumes_no_plan_id() {
+    let s = Setup::new();
+    let registry_id = s.env.register(registry::RegistryContract, ());
+    let registry = registry::RegistryContractClient::new(&s.env, &registry_id);
+    registry.initialize(&s.admin);
+    s.client.set_registry(&s.admin, &registry_id);
+
+    // The registry has no writers yet, so it refuses the plan. The whole
+    // creation fails and nothing is stored.
+    s.expect_create_err("first", AMOUNT, INTERVAL, CAP, Error::RegistryUpdateFailed);
+    assert!(s.client.get_active_plans().is_empty());
+
+    // Once the registry is configured, the next plan takes id 1, so the
+    // refused attempt did not use one.
+    registry.set_writers(&s.admin, &Address::generate(&s.env), &s.client.address);
+    let id = s.create(&s.merchant, "first");
+    assert_eq!(id, 1);
+    assert_eq!(s.client.get_plans_by_merchant(&s.merchant).len(), 1);
+}
+
+#[test]
 fn deactivate_plan_emits_plan_deactivated() {
     let s = Setup::new();
     let id = s.create(&s.merchant, "Pro");
