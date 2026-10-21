@@ -325,3 +325,38 @@ fn only_the_plan_contract_can_register_plans() {
     assert!(result.is_err());
     assert_eq!(s.stats().total_plans, 0);
 }
+
+#[test]
+fn volume_accumulation_overflows_gracefully() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+
+    // Drive sub1 total_charged and the volume to i128::MAX - 1, using two
+    // updates so the arithmetic in update_subscription stays within bounds
+    // at each step.
+    let half = i128::MAX / 2; // fits comfortably
+    s.client.update_subscription(&1, &half, &STATUS_ACTIVE);
+    // Bring sub1 to i128::MAX - 1 exactly; delta = (i128::MAX - 1) - half.
+    let near_max = i128::MAX - 1;
+    s.client.update_subscription(&1, &near_max, &STATUS_ACTIVE);
+    assert_eq!(s.stats().total_charged_volume, near_max);
+
+    // Now bring sub2 up by 1 so the total_charged_volume reaches i128::MAX.
+    s.client.update_subscription(&2, &1, &STATUS_ACTIVE);
+    assert_eq!(s.stats().total_charged_volume, i128::MAX);
+
+    // Snapshot state before the overflowing update.
+    let before_stats = s.stats();
+    let before_record = s.client.get_subscription_record(&2);
+
+    // Attempting to add any positive delta to total_charged_volume must overflow.
+    expect_err(
+        s.client.try_update_subscription(&2, &2, &STATUS_ACTIVE),
+        Error::Overflow,
+    );
+
+    // Stats and the record are unchanged after the failed update.
+    assert_eq!(s.stats(), before_stats);
+    assert_eq!(s.client.get_subscription_record(&2), before_record);
+}

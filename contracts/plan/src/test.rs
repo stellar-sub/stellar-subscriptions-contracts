@@ -335,3 +335,95 @@ fn deactivate_plan_emits_plan_deactivated() {
         [expected.to_xdr(&s.env, &s.client.address)]
     );
 }
+
+/// Verifies the event schema for `plan_created` and `plan_deactivated`.
+///
+/// Indexers rely on topic position, so adding, removing, or reordering a
+/// topic must make this test fail. The table below is the single source of
+/// truth for each event's layout.
+///
+/// | event            | topics[0]       | topics[1] | data fields                                               |
+/// |------------------|-----------------|-----------|-----------------------------------------------------------|
+/// | plan_created     | plan_id         | merchant  | name, token, amount_per_period, interval_ledgers, default_cap |
+/// | plan_deactivated | plan_id         | merchant  | (none)                                                    |
+///
+/// (The soroban runtime prepends an event-type Symbol as topics[0], so the
+/// two `#[topic]` fields become topics[1] and topics[2] in the raw XDR,
+/// giving 3 topics total.)
+#[test]
+fn event_schema_table() {
+    use soroban_sdk::xdr::{ContractEventBody, ContractEventV0};
+
+    // ---- plan_created -------------------------------------------------------
+    {
+        let s = Setup::new();
+        let id = s.create(&s.merchant, "Pro");
+
+        let raw: std::vec::Vec<soroban_sdk::xdr::ContractEvent> = s
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&s.client.address)
+            .events()
+            .to_vec();
+
+        assert_eq!(raw.len(), 1, "create_plan must emit exactly 1 event");
+
+        let expected = PlanCreated {
+            plan_id: id,
+            merchant: s.merchant.clone(),
+            name: s.name("Pro"),
+            token: s.token.clone(),
+            amount_per_period: AMOUNT,
+            interval_ledgers: INTERVAL,
+            default_cap: CAP,
+        };
+        assert_eq!(
+            raw[0],
+            expected.to_xdr(&s.env, &s.client.address),
+            "PlanCreated schema changed: update topic order (plan_id, merchant) \
+             and data fields (name, token, amount_per_period, interval_ledgers, default_cap)"
+        );
+        // Verify topic count independently so a reorder is also caught.
+        let ContractEventBody::V0(ContractEventV0 { ref topics, .. }) = raw[0].body;
+        assert_eq!(
+            topics.len(),
+            3, // event-type symbol + plan_id + merchant
+            "PlanCreated: expected 3 XDR topics (event-type symbol + plan_id + merchant)"
+        );
+    }
+
+    // ---- plan_deactivated ---------------------------------------------------
+    {
+        let s = Setup::new();
+        let id = s.create(&s.merchant, "Pro");
+        s.client.deactivate_plan(&s.merchant, &id);
+
+        let raw: std::vec::Vec<soroban_sdk::xdr::ContractEvent> = s
+            .env
+            .events()
+            .all()
+            .filter_by_contract(&s.client.address)
+            .events()
+            .to_vec();
+
+        assert_eq!(raw.len(), 1, "deactivate_plan must emit exactly 1 event");
+
+        let expected = PlanDeactivated {
+            plan_id: id,
+            merchant: s.merchant.clone(),
+        };
+        assert_eq!(
+            raw[0],
+            expected.to_xdr(&s.env, &s.client.address),
+            "PlanDeactivated schema changed: update topic order (plan_id, merchant) \
+             and verify the data body is empty"
+        );
+        let ContractEventBody::V0(ContractEventV0 { ref topics, .. }) = raw[0].body;
+        assert_eq!(
+            topics.len(),
+            3, // event-type symbol + plan_id + merchant
+            "PlanDeactivated: expected 3 XDR topics (event-type symbol + plan_id + merchant)"
+        );
+    }
+}
