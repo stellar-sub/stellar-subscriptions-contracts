@@ -22,6 +22,9 @@ pub use types::{
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
+/// Version of this contract, bumped on each incompatible change.
+pub const VERSION: u32 = 1;
+
 #[contract]
 pub struct RegistryContract;
 
@@ -67,6 +70,11 @@ impl RegistryContract {
 
     pub fn get_writers(env: Env) -> Result<Writers, Error> {
         storage::read_writers(&env)
+    }
+
+    /// Version of this contract.
+    pub fn version() -> u32 {
+        VERSION
     }
 
     /// Count a new plan. Only the plan contract may call this.

@@ -90,3 +90,16 @@ pub struct Resumed {
     pub subscriber: Address,
     pub next_charge_ledger: u32,
 }
+
+/// A subscriber lowered a subscription's cap.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CapLowered {
+    #[topic]
+    pub subscription_id: u64,
+    #[topic]
+    pub subscriber: Address,
+    pub new_cap: i128,
+    /// Cap that can still ever be charged after the lowering.
+    pub new_remaining: i128,
+}

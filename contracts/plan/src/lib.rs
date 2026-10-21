@@ -19,6 +19,9 @@ use soroban_sdk::{
 };
 use storage::DataKey;
 
+/// Version of this contract, bumped on each incompatible change.
+pub const VERSION: u32 = 1;
+
 /// Longest accepted plan name, in bytes.
 pub const MAX_NAME_LEN: u32 = 64;
 
@@ -89,6 +92,16 @@ impl PlanContract {
         storage::read_registry(&env)
     }
 
+    /// Get the admin address.
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        storage::read_admin(&env)
+    }
+
+    /// Version of this contract.
+    pub fn version() -> u32 {
+        VERSION
+    }
+
     /// Publish a plan. Requires the merchant's signature. The plan is active
     /// immediately.
     pub fn create_plan(
@@ -131,6 +144,7 @@ impl PlanContract {
         storage::write_plan(&env, &plan);
         storage::push_index(&env, DataKey::ByMerchant(plan.merchant.clone()), id);
         storage::push_index(&env, DataKey::AllPlans, id);
+        storage::push_index(&env, DataKey::ByToken(plan.token.clone()), id);
 
         if let Some(registry) = storage::read_registry(&env) {
             let counted = RegistryClient::new(&env, &registry).try_register_plan(&id);
@@ -193,6 +207,32 @@ impl PlanContract {
             if plan.active {
                 out.push_back(plan);
             }
+        }
+        Ok(out)
+    }
+
+    /// Count of plans billed in a token.
+    pub fn get_plan_count(env: Env, token: Address) -> u32 {
+        storage::read_index(&env, &DataKey::ByToken(token)).len()
+    }
+
+    /// Plans billed in a token, oldest first. Returns up to `limit` plans
+    /// starting at offset `offset`.
+    pub fn get_plans_by_token(
+        env: Env,
+        token: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<Plan>, Error> {
+        if limit == 0 {
+            return Ok(Vec::new(&env));
+        }
+        let mut out = Vec::new(&env);
+        let ids = storage::read_index(&env, &DataKey::ByToken(token));
+        let end = offset.checked_add(limit).ok_or(Error::Overflow)?;
+        let len = ids.len();
+        for i in offset..end.min(len) {
+            out.push_back(storage::read_plan(&env, ids.get(i).unwrap())?);
         }
         Ok(out)
     }

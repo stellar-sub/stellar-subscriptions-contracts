@@ -335,3 +335,129 @@ fn deactivate_plan_emits_plan_deactivated() {
         [expected.to_xdr(&s.env, &s.client.address)]
     );
 }
+
+#[test]
+fn get_admin_returns_the_admin_after_initialization() {
+    let s = Setup::new();
+    assert_eq!(s.client.get_admin(), s.admin);
+}
+
+#[test]
+fn get_admin_fails_before_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let client = PlanContractClient::new(&env, &env.register(PlanContract, ()));
+    expect_err(client.try_get_admin(), Error::NotInitialized);
+}
+
+#[test]
+fn version_is_1() {
+    let s = Setup::new();
+    assert_eq!(s.client.version(), 1);
+}
+
+#[test]
+fn get_plan_count_returns_zero_when_empty() {
+    let s = Setup::new();
+    let token = Address::generate(&s.env);
+    assert_eq!(s.client.get_plan_count(&token), 0);
+}
+
+#[test]
+fn get_plan_count_increments_on_creation() {
+    let s = Setup::new();
+    assert_eq!(s.client.get_plan_count(&s.token), 0);
+
+    s.create(&s.merchant, "A");
+    assert_eq!(s.client.get_plan_count(&s.token), 1);
+
+    s.create(&s.merchant, "B");
+    assert_eq!(s.client.get_plan_count(&s.token), 2);
+}
+
+#[test]
+fn get_plan_count_ignores_plans_for_other_tokens() {
+    let s = Setup::new();
+    let other_token = Address::generate(&s.env);
+
+    let _id1 = s.client.create_plan(
+        &s.merchant,
+        &s.name("A"),
+        &s.token,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+    );
+    let _id2 = s.client.create_plan(
+        &s.merchant,
+        &s.name("B"),
+        &other_token,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+    );
+
+    assert_eq!(s.client.get_plan_count(&s.token), 1);
+    assert_eq!(s.client.get_plan_count(&other_token), 1);
+}
+
+#[test]
+fn get_plans_by_token_returns_empty_when_none() {
+    let s = Setup::new();
+    let token = Address::generate(&s.env);
+    assert!(s.client.get_plans_by_token(&token, &0, &10).is_empty());
+}
+
+#[test]
+fn get_plans_by_token_returns_plans_in_creation_order() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+
+    let all = s.client.get_plans_by_token(&s.token, &0, &10);
+    assert_eq!(ids(all), [a, b, c]);
+}
+
+#[test]
+fn get_plans_by_token_respects_offset_and_limit() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    let d = s.create(&s.merchant, "D");
+
+    assert_eq!(ids(s.client.get_plans_by_token(&s.token, &0, &2)), [a, b]);
+    assert_eq!(ids(s.client.get_plans_by_token(&s.token, &1, &2)), [b, c]);
+    assert_eq!(ids(s.client.get_plans_by_token(&s.token, &2, &2)), [c, d]);
+    assert_eq!(ids(s.client.get_plans_by_token(&s.token, &3, &2)), [d]);
+    let empty: std::vec::Vec<u64> = std::vec::Vec::new();
+    assert_eq!(ids(s.client.get_plans_by_token(&s.token, &4, &2)), empty);
+}
+
+#[test]
+fn get_plans_by_token_zero_limit_returns_empty() {
+    let s = Setup::new();
+    s.create(&s.merchant, "A");
+    assert!(s.client.get_plans_by_token(&s.token, &0, &0).is_empty());
+}
+
+#[test]
+fn get_plans_by_token_only_includes_plans_for_that_token() {
+    let s = Setup::new();
+    let other_token = Address::generate(&s.env);
+
+    let a = s.create(&s.merchant, "A");
+    let b = s.client.create_plan(
+        &s.merchant,
+        &s.name("B"),
+        &other_token,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+    );
+    let c = s.create(&s.merchant, "C");
+
+    assert_eq!(ids(s.client.get_plans_by_token(&s.token, &0, &10)), [a, c]);
+    assert_eq!(ids(s.client.get_plans_by_token(&other_token, &0, &10)), [b]);
+}
