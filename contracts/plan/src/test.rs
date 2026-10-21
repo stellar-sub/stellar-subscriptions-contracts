@@ -54,6 +54,19 @@ impl Setup {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &None,
+        )
+    }
+
+    fn create_with_description(&self, merchant: &Address, name: &str, description: &str) -> u64 {
+        self.client.create_plan(
+            merchant,
+            &self.name(name),
+            &self.token,
+            &AMOUNT,
+            &INTERVAL,
+            &CAP,
+            &Some(String::from_str(&self.env, description)),
         )
     }
 
@@ -74,6 +87,7 @@ impl Setup {
                 &amount,
                 &interval,
                 &cap,
+                &None,
             ),
             expected,
         );
@@ -135,8 +149,26 @@ fn create_plan_stores_every_field() {
             default_cap: CAP,
             active: true,
             created_at: 1_000,
+            description: None,
         }
     );
+}
+
+#[test]
+fn create_plan_with_description_stores_it() {
+    let s = Setup::new();
+    let id = s.create_with_description(&s.merchant, "Pro monthly", "Best plan available");
+    let plan = s.client.get_plan(&id);
+    assert_eq!(plan.id, id);
+    assert_eq!(plan.description, Some(s.name("Best plan available")));
+}
+
+#[test]
+fn existing_plans_without_description_decode_with_none() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "Basic");
+    let plan = s.client.get_plan(&id);
+    assert_eq!(plan.description, None);
 }
 
 #[test]

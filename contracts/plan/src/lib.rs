@@ -99,6 +99,7 @@ impl PlanContract {
         amount_per_period: i128,
         interval_ledgers: u32,
         default_cap: i128,
+        description: Option<String>,
     ) -> Result<u64, Error> {
         storage::read_admin(&env)?;
         merchant.require_auth();
@@ -127,6 +128,7 @@ impl PlanContract {
             default_cap,
             active: true,
             created_at: env.ledger().sequence(),
+            description,
         };
         storage::write_plan(&env, &plan);
         storage::push_index(&env, DataKey::ByMerchant(plan.merchant.clone()), id);
