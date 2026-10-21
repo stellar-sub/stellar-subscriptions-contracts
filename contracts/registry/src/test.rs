@@ -325,3 +325,9 @@ fn only_the_plan_contract_can_register_plans() {
     assert!(result.is_err());
     assert_eq!(s.stats().total_plans, 0);
 }
+
+#[test]
+fn version_is_1() {
+    let s = Setup::new();
+    assert_eq!(s.client.version(), 1);
+}
