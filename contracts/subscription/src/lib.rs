@@ -432,6 +432,18 @@ impl SubscriptionContract {
         Self::load_page(&env, &DataKey::ByMerchant(merchant), start, limit)
     }
 
+    /// How many subscriptions a subscriber has created. Reads only the index,
+    /// not the records.
+    pub fn count_by_subscriber(env: Env, subscriber: Address) -> u32 {
+        storage::read_index(&env, &DataKey::BySubscriber(subscriber)).len()
+    }
+
+    /// How many subscriptions are payable to a merchant. Reads only the index,
+    /// not the records.
+    pub fn count_by_merchant(env: Env, merchant: Address) -> u32 {
+        storage::read_index(&env, &DataKey::ByMerchant(merchant)).len()
+    }
+
     // ---- internal helpers ----
 
     fn require_admin(env: &Env, admin: &Address) -> Result<(), Error> {
