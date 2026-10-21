@@ -389,6 +389,30 @@ fn a_failing_registry_stops_plan_creation_and_consumes_no_plan_id() {
 }
 
 #[test]
+fn default_cap_of_one_period_and_the_largest_cap_are_accepted() {
+    let s = Setup::new();
+    let one_period = s.client.create_plan(
+        &s.merchant,
+        &s.name("one period"),
+        &s.token,
+        &AMOUNT,
+        &INTERVAL,
+        &AMOUNT,
+    );
+    assert_eq!(s.client.get_plan(&one_period).default_cap, AMOUNT);
+
+    let largest = s.client.create_plan(
+        &s.merchant,
+        &s.name("largest"),
+        &s.token,
+        &AMOUNT,
+        &INTERVAL,
+        &i128::MAX,
+    );
+    assert_eq!(s.client.get_plan(&largest).default_cap, i128::MAX);
+}
+
+#[test]
 fn deactivate_plan_emits_plan_deactivated() {
     let s = Setup::new();
     let id = s.create(&s.merchant, "Pro");
