@@ -53,6 +53,17 @@ pub struct PlanDeactivated {
     pub merchant: Address,
 }
 
+/// A merchant renamed a plan without changing financial terms.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanRenamed {
+    #[topic]
+    pub plan_id: u64,
+    #[topic]
+    pub merchant: Address,
+    pub name: String,
+}
+
 #[contract]
 pub struct PlanContract;
 
@@ -172,6 +183,27 @@ impl PlanContract {
         Ok(())
     }
 
+    /// Rename a plan without changing its financial terms. Requires the
+    /// signature of the merchant who created it. Existing subscriptions are
+    /// unaffected.
+    pub fn rename_plan(env: Env, merchant: Address, plan_id: u64, name: String) -> Result<(), Error> {
+        merchant.require_auth();
+        let mut plan = storage::read_plan(&env, plan_id)?;
+        if plan.merchant != merchant {
+            return Err(Error::NotPlanMerchant);
+        }
+
+        if name.is_empty() || name.len() > MAX_NAME_LEN {
+            return Err(Error::InvalidName);
+        }
+
+        plan.name = name.clone();
+        storage::write_plan(&env, &plan);
+        storage::bump_instance(&env);
+        PlanRenamed { plan_id, merchant, name }.publish(&env);
+        Ok(())
+    }
+
     pub fn get_plan(env: Env, plan_id: u64) -> Result<Plan, Error> {
         storage::read_plan(&env, plan_id)
     }
@@ -195,6 +227,87 @@ impl PlanContract {
             }
         }
         Ok(out)
+    }
+
+    /// Every plan a merchant created, paginated. Pages are contiguous and
+    /// ordered by creation time (oldest first). `page_size` must be at least
+    /// 1 and at most 1000.
+    ///
+    /// # Pagination
+    /// Request the first page with `cursor = 0`. The response includes a
+    /// `next_cursor`: if it is 0, there are no more pages. Pass `next_cursor`
+    /// as the `cursor` for the next page.
+    pub fn get_plans_by_merchant_page(
+        env: Env,
+        merchant: Address,
+        cursor: u32,
+        page_size: u32,
+    ) -> Result<(Vec<Plan>, u32), Error> {
+        if page_size == 0 || page_size > 1000 {
+            return Err(Error::InvalidPageSize);
+        }
+
+        let ids = storage::read_index(&env, &DataKey::ByMerchant(merchant));
+        let total = ids.len();
+        let mut plans = Vec::new(&env);
+        let mut next_cursor = 0u32;
+
+        if cursor < total {
+            let end = (cursor + page_size).min(total);
+            for i in cursor..end {
+                plans.push_back(storage::read_plan(&env, ids.get(i).unwrap())?);
+            }
+            if end < total {
+                next_cursor = end;
+            }
+        }
+
+        Ok((plans, next_cursor))
+    }
+
+    /// Every plan still accepting subscriptions, paginated. Pages are
+    /// contiguous and ordered by creation time (oldest first). `page_size`
+    /// must be at least 1 and at most 1000.
+    ///
+    /// # Pagination
+    /// Request the first page with `cursor = 0`. The response includes a
+    /// `next_cursor`: if it is 0, there are no more pages. Pass `next_cursor`
+    /// as the `cursor` for the next page.
+    pub fn get_active_plans_page(
+        env: Env,
+        cursor: u32,
+        page_size: u32,
+    ) -> Result<(Vec<Plan>, u32), Error> {
+        if page_size == 0 || page_size > 1000 {
+            return Err(Error::InvalidPageSize);
+        }
+
+        let all_ids = storage::read_index(&env, &DataKey::AllPlans);
+        let mut active_plans = Vec::new(&env);
+        let mut active_ids = Vec::new(&env);
+
+        // Collect all active plan ids
+        for id in all_ids.iter() {
+            let plan = storage::read_plan(&env, id)?;
+            if plan.active {
+                active_ids.push_back(id);
+            }
+        }
+
+        let total = active_ids.len();
+        let mut next_cursor = 0u32;
+
+        if cursor < total {
+            let end = (cursor + page_size).min(total);
+            for i in cursor..end {
+                active_plans.push_back(storage::read_plan(&env, active_ids.get(i).unwrap())?);
+            }
+            if end < total {
+                next_cursor = end;
+            }
+        }
+
+        Ok((active_plans, next_cursor))
     }
 }
 
