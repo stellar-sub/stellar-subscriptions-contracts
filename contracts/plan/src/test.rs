@@ -335,3 +335,56 @@ fn deactivate_plan_emits_plan_deactivated() {
         [expected.to_xdr(&s.env, &s.client.address)]
     );
 }
+
+#[test]
+fn get_inactive_plans_by_merchant_returns_none() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+
+    assert!(s.client.get_inactive_plans_by_merchant(&s.merchant).is_empty());
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 0);
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_returns_some() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    s.client.deactivate_plan(&s.merchant, &a);
+    s.client.deactivate_plan(&s.merchant, &c);
+
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&s.merchant)), [a, c]);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 2);
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_returns_all() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    s.client.deactivate_plan(&s.merchant, &a);
+    s.client.deactivate_plan(&s.merchant, &b);
+    s.client.deactivate_plan(&s.merchant, &c);
+
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&s.merchant)), [a, b, c]);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 3);
+}
+
+#[test]
+fn get_inactive_plans_by_merchant_excludes_other_merchants() {
+    let s = Setup::new();
+    let other = Address::generate(&s.env);
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&other, "B");
+    let c = s.create(&s.merchant, "C");
+    s.client.deactivate_plan(&s.merchant, &a);
+    s.client.deactivate_plan(&other, &b);
+
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&s.merchant)), [a]);
+    assert_eq!(ids(s.client.get_inactive_plans_by_merchant(&other)), [b]);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&s.merchant), 1);
+    assert_eq!(s.client.get_inactive_plans_by_merchant_count(&other), 1);
+}
