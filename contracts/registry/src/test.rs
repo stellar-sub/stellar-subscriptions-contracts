@@ -273,6 +273,35 @@ fn unknown_status_codes_are_rejected() {
 }
 
 #[test]
+fn reading_a_record_and_the_id_list_extends_their_persistent_ttl() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    // Ledgers in one day, matching the constant in `storage.rs`.
+    const DAY: u32 = 17_280;
+
+    let s = Setup::new();
+    s.register(1);
+
+    // Two days on, both entries are inside the threshold window and have aged.
+    let now = s.env.ledger().sequence();
+    s.env.ledger().set_sequence_number(now + 2 * DAY);
+
+    let ttl = |key: crate::storage::DataKey| {
+        s.env.as_contract(&s.client.address, || {
+            s.env.storage().persistent().get_ttl(&key)
+        })
+    };
+    let record_before = ttl(crate::storage::DataKey::Record(1));
+    let list_before = ttl(crate::storage::DataKey::AllSubscriptions);
+
+    s.client.get_subscription_record(&1);
+    s.client.get_all_subscriptions();
+
+    assert!(ttl(crate::storage::DataKey::Record(1)) > record_before);
+    assert!(ttl(crate::storage::DataKey::AllSubscriptions) > list_before);
+}
+
+#[test]
 fn unknown_subscriptions_are_not_found() {
     let s = Setup::new();
     expect_err(
