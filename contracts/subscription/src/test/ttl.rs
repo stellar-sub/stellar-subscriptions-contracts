@@ -47,3 +47,38 @@ fn reading_a_subscription_does_not_shorten_its_persistent_ttl() {
 
     assert!(after >= before, "TTL shrank on read ({before} -> {after})");
 }
+
+/// The instance TTL of the contract itself.
+fn instance_ttl(s: &Setup) -> u32 {
+    s.env.as_contract(&s.client.address, || {
+        s.env.storage().instance().get_ttl()
+    })
+}
+
+#[test]
+fn charge_cancel_pause_and_resume_extend_instance_ttl() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Each step moves the clock close to the instance TTL threshold, so the
+    // next state change must extend it.
+    s.advance(2 * DAY);
+    let before = instance_ttl(&s);
+    s.client.charge(&s.merchant, &id);
+    assert!(instance_ttl(&s) > before, "charge did not extend instance TTL");
+
+    s.advance(2 * DAY);
+    let before = instance_ttl(&s);
+    s.client.pause(&s.subscriber, &id);
+    assert!(instance_ttl(&s) > before, "pause did not extend instance TTL");
+
+    s.advance(2 * DAY);
+    let before = instance_ttl(&s);
+    s.client.resume(&s.subscriber, &id);
+    assert!(instance_ttl(&s) > before, "resume did not extend instance TTL");
+
+    s.advance(2 * DAY);
+    let before = instance_ttl(&s);
+    s.client.cancel(&s.subscriber, &id);
+    assert!(instance_ttl(&s) > before, "cancel did not extend instance TTL");
+}
