@@ -38,6 +38,7 @@ pub struct SubscriptionRecord {
     pub id: u64,
     pub subscriber: Address,
     pub merchant: Address,
+    pub token: Address,
     pub total_charged: i128,
     pub status: u32,
 }

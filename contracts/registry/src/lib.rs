@@ -89,6 +89,7 @@ impl RegistryContract {
         subscription_id: u64,
         subscriber: Address,
         merchant: Address,
+        token: Address,
     ) -> Result<(), Error> {
         storage::read_writers(&env)?
             .subscription_contract
@@ -103,6 +104,7 @@ impl RegistryContract {
                 id: subscription_id,
                 subscriber,
                 merchant,
+                token,
                 total_charged: 0,
                 status: STATUS_ACTIVE,
             },
@@ -205,6 +207,19 @@ impl RegistryContract {
             }
         }
         Ok(out)
+    }
+
+    /// Total volume charged for a specific token. Sums `total_charged` across
+    /// all subscriptions using that token, regardless of status.
+    pub fn get_token_volume(env: Env, token: Address) -> Result<i128, Error> {
+        let mut volume = 0i128;
+        for id in storage::read_all_ids(&env).iter() {
+            let record = storage::read_record(&env, id)?;
+            if record.token == token {
+                volume = volume.checked_add(record.total_charged).ok_or(Error::Overflow)?;
+            }
+        }
+        Ok(volume)
     }
 }
 
