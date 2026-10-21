@@ -3,7 +3,13 @@
 use soroban_sdk::{testutils::Address as _, Address};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
-use crate::{Error, SubStatus};
+use crate::{Error, SubStatus, VERSION};
+
+#[test]
+fn version_reports_the_contract_version() {
+    let s = Setup::new();
+    assert_eq!(s.client.version(), VERSION);
+}
 
 #[test]
 fn remaining_cap_and_is_chargeable_track_the_lifecycle() {

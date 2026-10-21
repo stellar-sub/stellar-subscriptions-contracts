@@ -20,11 +20,21 @@ use interfaces::{PlanClient, RegistryClient};
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
 
+/// Version of this contract's behaviour and storage layout. Bump it on any
+/// change to storage layout or to how an entrypoint behaves, so clients and
+/// indexers can tell which behaviour a deployed contract has.
+pub const VERSION: u32 = 1;
+
 #[contract]
 pub struct SubscriptionContract;
 
 #[contractimpl]
 impl SubscriptionContract {
+    /// The version of the deployed contract. See [`VERSION`].
+    pub fn version(_env: Env) -> u32 {
+        VERSION
+    }
+
     /// Set the admin. Callable once.
     ///
     /// The admin can only link the plan and registry contracts, once each,
