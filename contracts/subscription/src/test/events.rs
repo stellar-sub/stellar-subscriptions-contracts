@@ -47,6 +47,7 @@ fn charge_emits_charged() {
         Charged {
             subscription_id: id,
             merchant: s.merchant.clone(),
+            token: s.token.address.clone(),
             amount: AMOUNT,
             total_charged: AMOUNT,
             next_charge_ledger: now + INTERVAL,
@@ -66,6 +67,7 @@ fn the_charge_that_reaches_the_cap_reports_exhaustion() {
         Charged {
             subscription_id: id,
             merchant: s.merchant.clone(),
+            token: s.token.address.clone(),
             amount: AMOUNT,
             total_charged: AMOUNT,
             next_charge_ledger: now + INTERVAL,
