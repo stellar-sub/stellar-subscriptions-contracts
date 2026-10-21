@@ -340,6 +340,34 @@ fn get_active_plans_is_empty_before_any_plan_then_follows_creation_order() {
 }
 
 #[test]
+fn set_registry_is_admin_only_once_and_refused_after_the_first_plan() {
+    let s = Setup::new();
+    let registry = Address::generate(&s.env);
+    expect_err(
+        s.client.try_set_registry(&s.merchant, &registry),
+        Error::Unauthorized,
+    );
+
+    s.client.set_registry(&s.admin, &registry);
+    assert_eq!(s.client.get_registry(), Some(registry.clone()));
+    expect_err(
+        s.client.try_set_registry(&s.admin, &registry),
+        Error::AlreadyConfigured,
+    );
+
+    // On a contract that already has a plan, the registry cannot be linked,
+    // because the plan would be missing from it.
+    let late = Setup::new();
+    late.create(&late.merchant, "first");
+    let late_registry = Address::generate(&late.env);
+    expect_err(
+        late.client.try_set_registry(&late.admin, &late_registry),
+        Error::AlreadyConfigured,
+    );
+    assert_eq!(late.client.get_registry(), None);
+}
+
+#[test]
 fn deactivate_plan_emits_plan_deactivated() {
     let s = Setup::new();
     let id = s.create(&s.merchant, "Pro");
