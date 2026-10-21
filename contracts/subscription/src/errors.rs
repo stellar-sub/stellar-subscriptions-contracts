@@ -57,4 +57,8 @@ pub enum Error {
     PlanContractNotSet = 25,
     /// The linked registry refused an update.
     RegistryUpdateFailed = 26,
+    /// Cannot raise a cap, only lower it.
+    CapCannotRaise = 27,
+    /// Cannot lower cap below the amount already charged.
+    CapBelowCharged = 28,
 }
