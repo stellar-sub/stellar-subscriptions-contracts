@@ -15,7 +15,7 @@ mod types;
 pub use errors::Error;
 pub use types::{SubStatus, Subscription};
 
-use events::{Cancelled, Charged, Paused, Resumed, Subscribed};
+use events::{Cancelled, CapLowered, Charged, Paused, Resumed, Subscribed};
 use interfaces::{PlanClient, RegistryClient};
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
@@ -76,6 +76,11 @@ impl SubscriptionContract {
 
     pub fn get_registry(env: Env) -> Option<Address> {
         storage::read_registry(&env)
+    }
+
+    /// Get the admin address.
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
+        storage::read_admin(&env)
     }
 
     /// Subscriber authorizes a subscription. This is where consent is granted
@@ -341,6 +346,52 @@ impl SubscriptionContract {
             subscription_id,
             subscriber,
             next_charge_ledger: sub.next_charge_ledger,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Subscriber lowers a subscription's cap. Cannot raise it, only lower.
+    /// The cap can never be lowered below the amount already charged.
+    ///
+    /// Allowed from any status. The new cap is enforced in `charge` regardless
+    /// of status. Lowering the token allowance and updating the registry
+    /// happen afterwards as clean-up.
+    pub fn lower_cap(
+        env: Env,
+        subscriber: Address,
+        subscription_id: u64,
+        new_cap: i128,
+    ) -> Result<(), Error> {
+        let mut sub = Self::load_for_subscriber(&env, &subscriber, subscription_id)?;
+
+        // Cannot raise the cap, only lower it.
+        if new_cap > sub.total_cap {
+            return Err(Error::CapCannotRaise);
+        }
+
+        // Cannot lower below what's already charged.
+        if new_cap < sub.total_charged {
+            return Err(Error::CapBelowCharged);
+        }
+
+        sub.total_cap = new_cap;
+        storage::write_sub(&env, &sub);
+
+        // Lowering the cap may reduce the allowance; recompute from the new
+        // contract state.
+        let _allowance_updated = allowance::sync(&env, &sub.subscriber, &sub.token).is_ok();
+        let _registry_updated = Self::report(&env, &sub).is_ok();
+
+        storage::bump_instance(&env);
+        let new_remaining = new_cap
+            .checked_sub(sub.total_charged)
+            .ok_or(Error::Overflow)?;
+        CapLowered {
+            subscription_id,
+            subscriber,
+            new_cap,
+            new_remaining,
         }
         .publish(&env);
         Ok(())

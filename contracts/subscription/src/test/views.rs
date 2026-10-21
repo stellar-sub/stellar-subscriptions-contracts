@@ -1,6 +1,6 @@
 //! remaining_cap, is_chargeable and the per-party listings.
 
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
 use crate::{Error, SubStatus};
@@ -144,4 +144,19 @@ fn listings_reflect_current_state_not_state_at_creation() {
     let listed = s.client.get_by_merchant(&s.merchant).get_unchecked(0);
     assert_eq!(listed.status, SubStatus::Cancelled);
     assert_eq!(listed.total_charged, AMOUNT);
+}
+
+#[test]
+fn get_admin_returns_the_admin_after_initialization() {
+    let s = Setup::new();
+    assert_eq!(s.client.get_admin(), s.admin);
+}
+
+#[test]
+fn get_admin_fails_before_initialization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(crate::SubscriptionContract, ());
+    let client = crate::SubscriptionContractClient::new(&env, &contract_id);
+    expect_err(client.try_get_admin(), Error::NotInitialized);
 }
