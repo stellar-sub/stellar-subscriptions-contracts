@@ -20,6 +20,10 @@ use interfaces::{PlanClient, RegistryClient};
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
 
+/// Most subscriptions one paged read returns. Larger `limit`s are capped to
+/// this, so a single read stays within the network's resource limits.
+pub const MAX_PAGE_LIMIT: u32 = 50;
+
 #[contract]
 pub struct SubscriptionContract;
 
@@ -409,9 +413,23 @@ impl SubscriptionContract {
         Self::load_indexed(&env, &DataKey::BySubscriber(subscriber))
     }
 
-    /// Every subscription payable to a merchant, oldest first.
+    /// Every subscription payable to a merchant, oldest first. Reads the whole
+    /// history, so for merchants with many subscriptions use
+    /// `get_by_merchant_page`.
     pub fn get_by_merchant(env: Env, merchant: Address) -> Result<Vec<Subscription>, Error> {
         Self::load_indexed(&env, &DataKey::ByMerchant(merchant))
+    }
+
+    /// One page of the subscriptions payable to a merchant, oldest first.
+    /// `start` is the position of the first item. `limit` is capped at
+    /// [`MAX_PAGE_LIMIT`]. A page past the end is empty.
+    pub fn get_by_merchant_page(
+        env: Env,
+        merchant: Address,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Subscription>, Error> {
+        Self::load_page(&env, &DataKey::ByMerchant(merchant), start, limit)
     }
 
     // ---- internal helpers ----
@@ -483,6 +501,20 @@ impl SubscriptionContract {
             return Err(Error::RegistryUpdateFailed);
         }
         Ok(())
+    }
+
+    /// Reads one page of an index. Only the records in the page are loaded.
+    fn load_page(env: &Env, key: &DataKey, start: u32, limit: u32) -> Result<Vec<Subscription>, Error> {
+        let ids = storage::read_index(env, key);
+        let end = start
+            .saturating_add(limit.min(MAX_PAGE_LIMIT))
+            .min(ids.len());
+        let mut out = Vec::new(env);
+        for index in start..end {
+            let id = ids.get(index).ok_or(Error::SubscriptionNotFound)?;
+            out.push_back(storage::read_sub(env, id)?);
+        }
+        Ok(out)
     }
 
     fn load_indexed(env: &Env, key: &DataKey) -> Result<Vec<Subscription>, Error> {
