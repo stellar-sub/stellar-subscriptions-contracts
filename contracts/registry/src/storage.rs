@@ -2,7 +2,7 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 
 use crate::{
     errors::Error,
-    types::{RegistryStats, SubscriptionRecord, Writers},
+    types::{MerchantStats, RegistryStats, SubscriptionRecord, Writers},
 };
 
 const DAY_IN_LEDGERS: u32 = 17_280;
@@ -28,6 +28,8 @@ pub enum DataKey {
     AllSubscriptions,
     /// Persistent: marks a plan id as counted.
     Plan(u64),
+    /// Instance: per-merchant counters.
+    MerchantStats(Address),
 }
 
 pub fn bump_instance(env: &Env) {
@@ -134,4 +136,17 @@ pub fn mark_plan(env: &Env, plan_id: u64) -> bool {
     env.storage().persistent().set(&key, &true);
     bump_persistent(env, &key);
     true
+}
+
+pub fn read_merchant_stats(env: &Env, merchant: &Address) -> MerchantStats {
+    env.storage()
+        .instance()
+        .get(&DataKey::MerchantStats(merchant.clone()))
+        .unwrap_or_default()
+}
+
+pub fn write_merchant_stats(env: &Env, merchant: &Address, stats: &MerchantStats) {
+    env.storage()
+        .instance()
+        .set(&DataKey::MerchantStats(merchant.clone()), stats);
 }
