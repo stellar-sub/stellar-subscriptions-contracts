@@ -6,7 +6,7 @@ use registry::{
     RegistryContract, RegistryContractClient, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED,
     STATUS_PAUSED,
 };
-use soroban_sdk::{testutils::Address as _, Address, String};
+use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
 use crate::Error;
@@ -304,4 +304,123 @@ fn a_misconfigured_registry_blocks_subscribe_instead_of_losing_the_record() {
         Error::RegistryUpdateFailed,
     );
     assert_eq!(s.allowance(), 0);
+}
+
+// A registry stand-in that can be armed to fail its update call, so a registry
+// failure is reproducible in isolation from the real registry's own rules.
+#[soroban_sdk::contracterror]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u32)]
+enum MockError {
+    Armed = 1,
+}
+
+#[soroban_sdk::contract]
+struct FailingRegistry;
+
+#[soroban_sdk::contractimpl]
+impl FailingRegistry {
+    pub fn arm(env: Env) {
+        env.storage().instance().set(&Symbol::new(&env, "ARMED"), &true);
+    }
+
+    pub fn disarm(env: Env) {
+        env.storage().instance().set(&Symbol::new(&env, "ARMED"), &false);
+    }
+
+    /// Mirror the registry the subscription contract calls. An armed registry
+    /// returns an error so the subscription contract maps the outcome to
+    /// `RegistryUpdateFailed` and rolls its own changes back.
+    pub fn register_subscription(
+        env: Env,
+        _subscription_id: u64,
+        _subscriber: Address,
+        _merchant: Address,
+    ) -> Result<(), MockError> {
+        let armed: bool = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "ARMED"))
+            .unwrap_or(false);
+        if armed {
+            return Err(MockError::Armed);
+        }
+        Ok(())
+    }
+
+    pub fn update_subscription(
+        env: Env,
+        _subscription_id: u64,
+        _total_charged: i128,
+        _status: u32,
+    ) -> Result<(), MockError> {
+        let armed: bool = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "ARMED"))
+            .unwrap_or(false);
+        if armed {
+            return Err(MockError::Armed);
+        }
+        Ok(())
+    }
+}
+
+struct Mocked {
+    s: Setup,
+    mock: FailingRegistryClient<'static>,
+    id: u64,
+}
+
+/// A subscription whose every lifecycle change is reported to a registry the
+/// test can arm to fail, in place of the real one.
+fn mock_registry() -> Mocked {
+    let s = Setup::new();
+    let mock = FailingRegistryClient::new(&s.env, &s.env.register(FailingRegistry, ()));
+    s.client.set_registry(&s.admin, &mock.address);
+    mock.disarm();
+    let id = s.subscribe();
+    Mocked { s, mock, id }
+}
+
+#[test]
+fn charge_rolls_back_everything_when_the_registry_update_fails() {
+    let m = mock_registry();
+    let before = m.s.snapshot(m.id);
+    m.mock.arm();
+    expect_err(
+        m.s.client.try_charge(&m.s.merchant, &m.id),
+        Error::RegistryUpdateFailed,
+    );
+    // The transfer happens before the registry report; the failed report must
+    // roll it back, leaving the subscription, balances and allowance as they
+    // were.
+    assert_eq!(m.s.snapshot(m.id), before);
+}
+
+#[test]
+fn pause_rolls_back_state_when_the_registry_update_fails() {
+    let m = mock_registry();
+    let before = m.s.snapshot(m.id);
+    m.mock.arm();
+    expect_err(
+        m.s.client.try_pause(&m.s.subscriber, &m.id),
+        Error::RegistryUpdateFailed,
+    );
+    assert_eq!(m.s.snapshot(m.id), before);
+}
+
+#[test]
+fn resume_rolls_back_state_when_the_registry_update_fails() {
+    let m = mock_registry();
+    // Pause succeeds while the registry is healthy; the armed failure is for
+    // the resume that follows.
+    m.s.client.pause(&m.s.subscriber, &m.id);
+    let before = m.s.snapshot(m.id);
+    m.mock.arm();
+    expect_err(
+        m.s.client.try_resume(&m.s.subscriber, &m.id),
+        Error::RegistryUpdateFailed,
+    );
+    assert_eq!(m.s.snapshot(m.id), before);
 }
