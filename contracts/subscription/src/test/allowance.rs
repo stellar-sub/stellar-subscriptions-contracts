@@ -31,6 +31,7 @@ fn allowance_covers_every_open_subscription_in_the_same_token() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
     // A second subscription adds to the allowance rather than replacing it,
     // so it cannot starve the first.
@@ -118,6 +119,7 @@ fn refresh_allowance_only_counts_open_subscriptions_in_that_token() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
     s.client.cancel(&s.subscriber, &cancelled);
 
@@ -134,6 +136,7 @@ fn refresh_allowance_only_counts_open_subscriptions_in_that_token() {
         &AMOUNT,
         &INTERVAL,
         &CAP,
+        &0,
         &0,
     );
 

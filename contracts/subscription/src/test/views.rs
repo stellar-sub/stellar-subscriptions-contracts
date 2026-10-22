@@ -114,6 +114,7 @@ fn get_by_subscriber_and_get_by_merchant_list_each_partys_subscriptions() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
 
     let mine = s.client.get_by_subscriber(&s.subscriber);
@@ -144,4 +145,122 @@ fn listings_reflect_current_state_not_state_at_creation() {
     let listed = s.client.get_by_merchant(&s.merchant).get_unchecked(0);
     assert_eq!(listed.status, SubStatus::Cancelled);
     assert_eq!(listed.total_charged, AMOUNT);
+}
+
+#[test]
+fn charges_remaining_counts_whole_periods_left() {
+    let s = Setup::new();
+    let id = s.subscribe_with(AMOUNT, INTERVAL, 3 * AMOUNT);
+
+    // Fresh: 3 periods in cap.
+    assert_eq!(s.client.charges_remaining(&id), 3);
+
+    s.client.charge(&s.merchant, &id);
+    assert_eq!(s.client.charges_remaining(&id), 2);
+    s.advance(INTERVAL);
+
+    s.client.charge(&s.merchant, &id);
+    assert_eq!(s.client.charges_remaining(&id), 1);
+    s.advance(INTERVAL);
+
+    // One more charge exhausts the cap.
+    s.client.charge(&s.merchant, &id);
+    assert_eq!(s.client.get_subscription(&id).status, SubStatus::Exhausted);
+    assert_eq!(s.client.charges_remaining(&id), 0);
+}
+
+#[test]
+fn charges_remaining_is_zero_for_final_states() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Cancel: final state.
+    s.client.cancel(&s.subscriber, &id);
+    assert_eq!(s.client.charges_remaining(&id), 0);
+
+    // Fresh subscription to test Exhausted.
+    let id2 = s.subscribe();
+    while s.client.is_chargeable(&id2) {
+        s.client.charge(&s.merchant, &id2);
+        s.advance(INTERVAL);
+    }
+    assert_eq!(s.client.charges_remaining(&id2), 0);
+    assert_eq!(s.client.get_subscription(&id2).status, SubStatus::Exhausted);
+}
+
+#[test]
+fn next_charge_in_tracks_the_schedule() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Fresh: charge is available now.
+    assert_eq!(s.client.next_charge_in(&id), 0);
+
+    s.client.charge(&s.merchant, &id);
+    // After charge: interval remains.
+    assert_eq!(s.client.next_charge_in(&id), INTERVAL);
+
+    s.advance(INTERVAL / 2);
+    assert_eq!(s.client.next_charge_in(&id), INTERVAL / 2);
+
+    s.advance(INTERVAL / 2);
+    // Now it should be available.
+    assert_eq!(s.client.next_charge_in(&id), 0);
+}
+
+#[test]
+fn next_charge_in_is_zero_for_final_states() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    s.client.cancel(&s.subscriber, &id);
+    assert_eq!(s.client.next_charge_in(&id), 0);
+
+    let id2 = s.subscribe();
+    while s.client.is_chargeable(&id2) {
+        s.client.charge(&s.merchant, &id2);
+        s.advance(INTERVAL);
+    }
+    assert_eq!(s.client.next_charge_in(&id2), 0);
+}
+
+#[test]
+fn get_allowance_status_shows_current_allowance() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // After subscribe, outstanding cap equals the subscription cap.
+    let (outstanding, allowance) = s.client.get_allowance_status(&s.subscriber, &s.token.address);
+    assert_eq!(outstanding, CAP);
+    // Allowance is set to match outstanding.
+    assert_eq!(allowance, CAP);
+
+    s.client.charge(&s.merchant, &id);
+    // After charge, outstanding cap is reduced.
+    let (outstanding, _) = s.client.get_allowance_status(&s.subscriber, &s.token.address);
+    assert_eq!(outstanding, CAP - AMOUNT);
+}
+
+#[test]
+fn get_allowance_status_with_zero_allowance() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Manually set allowance to 0.
+    s.token.approve(&s.subscriber, &s.client.address, &0, &(s.ledger() + 1000));
+
+    let (outstanding, allowance) = s.client.get_allowance_status(&s.subscriber, &s.token.address);
+    assert_eq!(outstanding, CAP);
+    assert_eq!(allowance, 0);
+}
+
+#[test]
+fn get_allowance_status_with_multiple_subscriptions() {
+    let s = Setup::new();
+    let id1 = s.subscribe();
+    let id2 = s.subscribe();
+
+    // Two subscriptions: outstanding cap is 2 * CAP.
+    let (outstanding, _) = s.client.get_allowance_status(&s.subscriber, &s.token.address);
+    assert_eq!(outstanding, 2 * CAP);
 }

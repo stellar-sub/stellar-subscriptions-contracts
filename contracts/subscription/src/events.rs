@@ -90,3 +90,14 @@ pub struct Resumed {
     pub subscriber: Address,
     pub next_charge_ledger: u32,
 }
+
+/// A merchant ended a subscription. Final.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MerchantEnded {
+    #[topic]
+    pub subscription_id: u64,
+    #[topic]
+    pub merchant: Address,
+    pub total_charged: i128,
+}
