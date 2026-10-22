@@ -26,7 +26,7 @@ fn subscribe_before_initialize_is_rejected() {
     let token = Address::generate(&env);
 
     expect_err(
-        client.try_subscribe(&subscriber, &merchant, &token, &AMOUNT, &INTERVAL, &CAP, &0),
+        client.try_subscribe(&subscriber, &merchant, &token, &AMOUNT, &INTERVAL, &CAP, &0, &0),
         Error::NotInitialized,
     );
 }
@@ -67,6 +67,7 @@ fn subscribe_rejects_a_non_positive_amount() {
                 &INTERVAL,
                 &CAP,
                 &0,
+                &0,
             ),
             Error::InvalidAmount,
         );
@@ -84,6 +85,7 @@ fn subscribe_rejects_a_zero_interval() {
             &AMOUNT,
             &0,
             &CAP,
+            &0,
             &0,
         ),
         Error::InvalidInterval,
@@ -103,6 +105,7 @@ fn subscribe_rejects_a_cap_below_one_period() {
                 &INTERVAL,
                 &cap,
                 &0,
+                &0,
             ),
             Error::InvalidCap,
         );
@@ -120,6 +123,7 @@ fn subscribe_rejects_subscribing_to_yourself() {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &0,
             &0,
         ),
         Error::SameParty,
@@ -146,6 +150,7 @@ fn subscribe_requires_the_subscribers_signature() {
                     INTERVAL,
                     CAP,
                     0u64,
+                    0u32,
                 )
                     .into_val(&s.env),
                 sub_invokes: &[],
@@ -158,6 +163,7 @@ fn subscribe_requires_the_subscribers_signature() {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &0,
             &0,
         );
     assert!(result.is_err());

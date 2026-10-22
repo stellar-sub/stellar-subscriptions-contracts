@@ -78,6 +78,7 @@ fn subscribe_signed_a_few_ledgers_before_it_lands_still_succeeds() {
                     INTERVAL,
                     CAP,
                     0u64,
+                    0u32,
                 )
                     .into_val(&s.env),
                 sub_invokes: &[approve],
@@ -90,6 +91,7 @@ fn subscribe_signed_a_few_ledgers_before_it_lands_still_succeeds() {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &0,
             &0,
         );
     assert_eq!(s.allowance(), CAP);

@@ -55,6 +55,7 @@ impl Linked {
             &INTERVAL,
             &cap,
             &plan_id,
+            &0,
         )
     }
 }
@@ -81,6 +82,7 @@ fn subscribing_to_an_unknown_plan_is_rejected() {
             &INTERVAL,
             &CAP,
             &99,
+            &0,
         ),
         Error::PlanNotFound,
     );
@@ -100,6 +102,7 @@ fn subscribing_to_a_deactivated_plan_is_rejected() {
             &INTERVAL,
             &CAP,
             &plan_id,
+            &0,
         ),
         Error::PlanInactive,
     );
@@ -139,6 +142,7 @@ fn terms_that_differ_from_the_plan_are_rejected() {
                 &interval,
                 &CAP,
                 &plan_id,
+                &0,
             ),
             Error::PlanMismatch,
         );
@@ -169,6 +173,7 @@ fn a_plan_id_without_a_linked_plan_contract_is_rejected() {
             &INTERVAL,
             &CAP,
             &1,
+            &0,
         ),
         Error::PlanContractNotSet,
     );
@@ -299,6 +304,7 @@ fn a_misconfigured_registry_blocks_subscribe_instead_of_losing_the_record() {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &0,
             &0,
         ),
         Error::RegistryUpdateFailed,

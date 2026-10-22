@@ -17,13 +17,18 @@ pub enum SubStatus {
     Cancelled = 2,
     /// `total_charged` has reached `total_cap`. Final.
     Exhausted = 3,
+    /// Ended by the merchant. Final: no further charges, ever.
+    MerchantEnded = 4,
 }
 
 impl SubStatus {
-    /// Cancelled and Exhausted are terminal; nothing moves a subscription out
-    /// of them.
+    /// Cancelled, MerchantEnded, and Exhausted are terminal; nothing moves a
+    /// subscription out of them.
     pub fn is_final(self) -> bool {
-        matches!(self, SubStatus::Cancelled | SubStatus::Exhausted)
+        matches!(
+            self,
+            SubStatus::Cancelled | SubStatus::Exhausted | SubStatus::MerchantEnded
+        )
     }
 }
 
@@ -54,4 +59,7 @@ pub struct Subscription {
     /// Plan this subscription was created from, or 0 for an ad-hoc
     /// subscription.
     pub plan_id: u64,
+    /// Trial period in ledgers (0 if no trial). First charge is delayed by
+    /// this amount.
+    pub trial_ledgers: u32,
 }

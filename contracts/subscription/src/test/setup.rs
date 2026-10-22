@@ -64,7 +64,7 @@ impl Setup {
         }
     }
 
-    /// Default subscription: AMOUNT every INTERVAL, capped at CAP.
+    /// Default subscription: AMOUNT every INTERVAL, capped at CAP, no trial.
     pub fn subscribe(&self) -> u64 {
         self.subscribe_with(AMOUNT, INTERVAL, CAP)
     }
@@ -77,6 +77,7 @@ impl Setup {
             &amount,
             &interval,
             &cap,
+            &0,
             &0,
         )
     }
