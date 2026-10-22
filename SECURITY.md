@@ -31,6 +31,20 @@ The cap, interval and cancellation are enforced by the subscription contract
 in `charge()` before any funds move. Nothing in the web app or the other two
 contracts is needed for them to hold.
 
+## Re-entrancy
+
+Soroban's host rejects a contract call that attempts to re-enter a contract
+already on the invocation stack. The subscription contract relies on this
+host guarantee when a token calls back into `charge()` from `transfer_from`;
+the regression test `token_callback_cannot_reenter_charge_or_double_charge`
+proves the nested call fails and only the outer charge is recorded. The source
+of the guarantee is the [Soroban host invocation implementation](https://github.com/stellar/rs-soroban-env/tree/main/soroban-env-host/src).
+
+## Threat model
+
+See the [three-contract threat model](docs/threat-model.md) for actors, assets,
+entry points, mitigations and their test evidence.
+
 ## Who can do what
 
 | Actor | Can | Cannot |

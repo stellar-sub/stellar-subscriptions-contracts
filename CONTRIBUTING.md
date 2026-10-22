@@ -31,6 +31,7 @@ for changes to the subscription contract is high. Please read
 | Run all tests | `make test` (`cargo test --workspace`) |
 | Run one contract's tests | `cargo test -p subscription` (or `plan`, `registry`) |
 | Run only the invariant tests | `cargo test -p subscription invariant_` |
+| Run mutation testing on subscription contract code | `cargo mutants --file contracts/subscription/src/lib.rs` |
 | Lint | `make clippy` |
 | Format | `make fmt` |
 | Build wasm (CLI) | `make build` |
