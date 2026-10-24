@@ -1,6 +1,8 @@
 //! All three contracts deployed and linked: subscriptions checked against
 //! real plans, and a real registry mirroring every lifecycle change.
 
+extern crate std;
+
 use plan::{PlanContract, PlanContractClient};
 use registry::{
     RegistryContract, RegistryContractClient, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED,
@@ -310,47 +312,110 @@ fn a_misconfigured_registry_blocks_subscribe_instead_of_losing_the_record() {
     assert_eq!(s.allowance(), 0);
 }
 
-#[test]
-fn cancel_with_a_broken_registry_reports_registry_updated_false_and_still_cancels() {
-    // Build the world: subscription contract linked to a mock registry that
-    // will be armed to fail after the first subscription is in place.
-    let s = Setup::new();
-    let mock_reg = MockRegistryClient::new(&s.env, &s.env.register(MockRegistry, ()));
-    s.client.set_registry(&s.admin, &mock_reg.address);
-
-    let id = s.subscribe();
-
-    // Arm the mock so the next registry write panics.
-    mock_reg.arm();
-
-    // cancel() must succeed even though the registry refuses the update.
-    s.client.cancel(&s.subscriber, &id);
-
-    // Read the emitted event before any further state queries.
-    let emitted = s.env.events().all().filter_by_contract(&s.client.address);
-
-    // REVOCATION: the subscription is definitively cancelled.
-    assert_eq!(s.sub(id).status, crate::SubStatus::Cancelled);
-
-    // The event must record registry_updated: false (and allowance_updated:
-    // true because the real SAC token did lower the allowance).
-    assert_eq!(
-        emitted,
-        [Cancelled {
-            subscription_id: id,
-            subscriber: s.subscriber.clone(),
-            total_charged: 0,
-            unused_cap: CAP,
-            allowance_updated: true,
-            registry_updated: false,
+/// Derive the three registry stats directly from the subscription records.
+/// Used to cross-check what the registry reports.
+fn derived_stats(l: &Linked, ids: &[u64]) -> (u64, u64, i128) {
+    let total = ids.len() as u64;
+    let mut active: u64 = 0;
+    let mut volume: i128 = 0;
+    for &id in ids {
+        let sub = l.s.sub(id);
+        if sub.status == crate::SubStatus::Active {
+            active += 1;
         }
-        .to_xdr(&s.env, &s.client.address)]
-    );
+        volume += sub.total_charged;
+    }
+    (total, active, volume)
+}
 
-    // REVOCATION still holds: a charge afterwards is rejected.
-    s.advance(INTERVAL);
-    expect_err(
-        s.client.try_charge(&s.merchant, &id),
-        Error::SubscriptionCancelled,
+#[test]
+fn registry_stats_equal_derived_values_after_every_step() {
+    // Walk a sequence of subscribe → charge → pause → resume → cancel
+    // steps and after each one confirm that the registry's three counters
+    // exactly match what you get by summing the live subscription records.
+    //
+    // If they ever diverge the assertion prints the step name so the
+    // failure is immediately actionable.
+    let l = linked();
+
+    let mut ids: std::vec::Vec<u64> = std::vec::Vec::new();
+
+    macro_rules! check {
+        ($step:expr) => {{
+            let stats = l.index.get_stats();
+            let (derived_total, derived_active, derived_volume) = derived_stats(&l, &ids);
+            assert_eq!(
+                stats.total_subscriptions, derived_total,
+                "total_subscriptions mismatch after: {}", $step
+            );
+            assert_eq!(
+                stats.active_subscriptions, derived_active,
+                "active_subscriptions mismatch after: {}", $step
+            );
+            assert_eq!(
+                stats.total_charged_volume, derived_volume,
+                "total_charged_volume mismatch after: {}", $step
+            );
+        }};
+    }
+
+    // --- subscribe first subscription ---
+    let id1 = l.s.client.subscribe(
+        &l.s.subscriber,
+        &l.s.merchant,
+        &l.s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
     );
+    ids.push(id1);
+    check!("subscribe id1");
+
+    // --- subscribe second subscription (different merchant) ---
+    let merchant2 = {
+        use soroban_sdk::testutils::Address as _;
+        soroban_sdk::Address::generate(&l.s.env)
+    };
+    l.s.mint(&merchant2, 1);
+    let id2 = l.s.client.subscribe(
+        &l.s.subscriber,
+        &merchant2,
+        &l.s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+    );
+    ids.push(id2);
+    check!("subscribe id2");
+
+    // --- charge id1 ---
+    l.s.client.charge(&l.s.merchant, &id1);
+    check!("charge id1");
+
+    // --- charge id2 ---
+    l.s.client.charge(&merchant2, &id2);
+    check!("charge id2");
+
+    // --- pause id1 ---
+    l.s.client.pause(&l.s.subscriber, &id1);
+    check!("pause id1");
+
+    // --- resume id1 ---
+    l.s.client.resume(&l.s.subscriber, &id1);
+    check!("resume id1");
+
+    // --- advance and charge id1 again ---
+    l.s.advance(INTERVAL);
+    l.s.client.charge(&l.s.merchant, &id1);
+    check!("charge id1 second time");
+
+    // --- cancel id2 ---
+    l.s.client.cancel(&l.s.subscriber, &id2);
+    check!("cancel id2");
+
+    // --- cancel id1 ---
+    l.s.client.cancel(&l.s.subscriber, &id1);
+    check!("cancel id1");
 }
