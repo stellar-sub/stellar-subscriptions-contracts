@@ -88,3 +88,10 @@ jobs:
 
       - name: Report wasm sizes
         run: ls -l target/wasm32v1-none/release/*.wasm
+
+      # Fail the build if any contract's wasm exceeds the budget recorded in
+      # .github/wasm-size-budget.json. To raise a budget, run:
+      #   make wasm && scripts/check-wasm-size.sh --update
+      # and commit the updated file with a PR comment explaining why.
+      - name: Check wasm size budgets
+        run: bash scripts/check-wasm-size.sh

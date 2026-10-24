@@ -97,6 +97,10 @@ contracts/
   plan/           merchant billing plans
   registry/       index of plans and subscriptions
 docs/             per-contract reference
+  subscription.md  contract reference and charge() walkthrough
+  plan.md          plan contract reference
+  registry.md      registry contract reference
+  errors.md        how to read a failed transaction and map it to an error code
 scripts/deploy.sh deploy, initialize and link all three
 DEPLOYMENTS.md    live contract ids
 ```

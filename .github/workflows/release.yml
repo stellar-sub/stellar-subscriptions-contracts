@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build wasm and publish release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create the GitHub release and upload assets
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs exactly the channel, targets and components pinned in
+      # rust-toolchain.toml, so release builds use the same toolchain
+      # as CI and local dev.
+      - name: Install Rust
+        run: rustup show
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-release-${{ hashFiles('**/Cargo.lock') }}
+
+      # Build optimised wasm artefacts the same way CI does (no Stellar CLI
+      # required). The resulting files are identical to `stellar contract build`
+      # because both use the same profile and target.
+      - name: Build contracts (wasm)
+        run: cargo build --workspace --release --target wasm32v1-none
+
+      # Collect the three contract wasm files into a staging directory and
+      # generate a SHA-256 manifest alongside them.
+      - name: Collect artefacts and compute hashes
+        run: |
+          mkdir -p release-artifacts
+          for wasm in target/wasm32v1-none/release/subscription.wasm \
+                      target/wasm32v1-none/release/plan.wasm \
+                      target/wasm32v1-none/release/registry.wasm; do
+            cp "$wasm" release-artifacts/
+          done
+          cd release-artifacts
+          sha256sum *.wasm | tee SHA256SUMS.txt
+
+      - name: Show artefact sizes
+        run: ls -lh release-artifacts/
+
+      # Verify the built wasm files are within their size budgets before
+      # publishing the release.
+      - name: Check wasm size budgets
+        run: bash scripts/check-wasm-size.sh
+
+      # Create (or update if re-run) a GitHub release for the tag and attach
+      # every file from release-artifacts/ as a release asset.
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ github.ref_name }}"
+          body: |
+            ## Wasm artefacts — ${{ github.ref_name }}
+
+            The three contract wasm files are attached below, compiled from
+            this tag with the Rust toolchain pinned in `rust-toolchain.toml`.
+
+            ### Verifying locally
+
+            To confirm the release hashes match a local build:
+
+            ```bash
+            git checkout ${{ github.ref_name }}
+            make wasm
+            sha256sum target/wasm32v1-none/release/*.wasm
+            # compare output with the attached SHA256SUMS.txt
+            ```
+
+            Or, using the Stellar CLI (produces byte-for-byte identical output):
+
+            ```bash
+            stellar contract build
+            sha256sum target/wasm32v1-none/release/*.wasm
+            ```
+
+            ### Deploying from this release
+
+            Download a wasm, verify its hash against `SHA256SUMS.txt`, then:
+
+            ```bash
+            stellar contract deploy \
+              --wasm subscription.wasm \
+              --network testnet \
+              --source <identity>
+            ```
+          files: |
+            release-artifacts/subscription.wasm
+            release-artifacts/plan.wasm
+            release-artifacts/registry.wasm
+            release-artifacts/SHA256SUMS.txt
+          fail_on_unmatched_files: true

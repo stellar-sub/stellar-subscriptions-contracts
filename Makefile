@@ -1,4 +1,4 @@
-.PHONY: build wasm test clippy fmt fmt-check check clean deploy verify
+.PHONY: build wasm wasm-size test clippy fmt fmt-check check clean deploy verify
 
 NETWORK ?= testnet
 IDENTITY ?= subs-deployer
@@ -24,8 +24,15 @@ fmt:
 fmt-check:
 	cargo fmt --all -- --check
 
+# Check every contract's wasm against the size budgets in
+# .github/wasm-size-budget.json. Run `make wasm` first.
+# To update budgets after an intentional size change:
+#   make wasm && scripts/check-wasm-size.sh --update
+wasm-size:
+	bash scripts/check-wasm-size.sh
+
 # Everything CI checks, in CI's order.
-check: test clippy fmt-check wasm
+check: test clippy fmt-check wasm wasm-size
 
 clean:
 	cargo clean
