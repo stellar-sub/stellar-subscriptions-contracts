@@ -12,6 +12,7 @@ mod charge;
 mod events;
 mod expiry;
 mod hostile_token;
+mod reentrant_token;
 mod integration;
 mod merchant_isolation;
 mod mock_registry;
