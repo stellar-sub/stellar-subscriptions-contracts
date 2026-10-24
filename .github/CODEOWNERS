@@ -1,0 +1,16 @@
+# CODEOWNERS
+# Routes review requests to the maintainers of the relevant paths.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repository.
+* @stellar-sub/maintainers
+
+# Subscription contract changes must be reviewed by maintainers.
+contracts/subscription/ @stellar-sub/maintainers
+
+# Other contracts.
+contracts/ @stellar-sub/maintainers
+
+# Documentation and project metadata.
+*.md @stellar-sub/maintainers
+.github/ @stellar-sub/maintainers

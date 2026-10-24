@@ -104,3 +104,42 @@ fn charge_fails_cleanly_when_the_subscriber_cannot_pay() {
     // A failed transfer must not count against the cap or the schedule.
     assert_eq!(s.snapshot(id), before);
 }
+
+#[test]
+fn repeated_pause_and_resume_never_pulls_next_charge_earlier() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.charge(&s.merchant, &id);
+    let original_due = s.sub(id).next_charge_ledger;
+
+    // Resume reschedules at max(next_charge_ledger, now), so every
+    // pause/resume cycle can only push the due ledger forward, never back.
+    let steps = [INTERVAL / 4, INTERVAL, INTERVAL / 2, 2 * INTERVAL, 1, INTERVAL + 5];
+    let mut prev = original_due;
+    for (i, &step) in steps.iter().cycle().take(20).enumerate() {
+        s.advance(step);
+        s.client.pause(&s.subscriber, &id);
+        s.client.resume(&s.subscriber, &id);
+        let after = s.sub(id).next_charge_ledger;
+        assert!(
+            after >= prev,
+            "next_charge_ledger decreased at cycle {i}: {after} < {prev}"
+        );
+        prev = after;
+    }
+
+    // The first charge after the cycles is allowed no earlier than the
+    // original schedule: the due ledger only ever moved forward.
+    let final_due = s.sub(id).next_charge_ledger;
+    assert!(final_due >= original_due);
+
+    s.set_ledger(original_due.saturating_sub(1));
+    expect_err(
+        s.client.try_charge(&s.merchant, &id),
+        Error::IntervalNotElapsed,
+    );
+
+    s.set_ledger(final_due);
+    s.client.charge(&s.merchant, &id);
+    assert_eq!(s.sub(id).total_charged, 2 * AMOUNT);
+}

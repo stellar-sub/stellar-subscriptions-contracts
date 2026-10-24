@@ -1,7 +1,7 @@
 //! All three contracts deployed and linked: subscriptions checked against
 //! real plans, and a real registry mirroring every lifecycle change.
 
-use plan::{PlanContract, PlanContractClient};
+use plan::{Plan as PlanType, PlanContract, PlanContractClient};
 use registry::{
     RegistryContract, RegistryContractClient, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED,
     STATUS_PAUSED,
@@ -9,7 +9,7 @@ use registry::{
 use soroban_sdk::{testutils::Address as _, Address, String};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
-use crate::Error;
+use crate::{interfaces::Plan as MirroredPlan, Error};
 
 struct Linked {
     s: Setup,
@@ -304,4 +304,85 @@ fn a_misconfigured_registry_blocks_subscribe_instead_of_losing_the_record() {
         Error::RegistryUpdateFailed,
     );
     assert_eq!(s.allowance(), 0);
+}
+
+/// The two `Plan` structs — `plan::Plan` and the mirrored
+/// `interfaces::Plan` — must stay in sync. This test builds a real plan,
+/// decodes it through the mirrored type, and compares every field.
+///
+/// If a field is added, removed, or renamed in only one place, the decode
+/// will produce a mismatched value or a host error, and the assertions below
+/// will fail with a message indicating which field diverged.
+#[test]
+fn plan_mirror_type_matches_the_real_plan_contract() {
+    let l = linked();
+    let plan_id = l.create_plan();
+
+    // Decode through the canonical type (plan crate).
+    let canonical: PlanType = l.plans.get_plan(&plan_id);
+
+    // Decode through the mirrored type (interfaces.rs) by calling the same
+    // contract. The SDK decodes contracttype by field name across crate
+    // boundaries, so any rename or addition in only one type will mismatch.
+    use crate::interfaces::PlanClient as MirroredPlanClient;
+    let mirrored: MirroredPlan = MirroredPlanClient::new(&l.s.env, &l.plans.address)
+        .get_plan(&plan_id);
+
+    // Compare every field individually so the failure message names the diverging field.
+    assert_eq!(mirrored.id, canonical.id,
+        "field `id` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.merchant, canonical.merchant,
+        "field `merchant` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.name, canonical.name,
+        "field `name` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.token, canonical.token,
+        "field `token` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.amount_per_period, canonical.amount_per_period,
+        "field `amount_per_period` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.interval_ledgers, canonical.interval_ledgers,
+        "field `interval_ledgers` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.default_cap, canonical.default_cap,
+        "field `default_cap` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.active, canonical.active,
+        "field `active` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+    assert_eq!(mirrored.created_at, canonical.created_at,
+        "field `created_at` differs between plan::Plan and interfaces::Plan — update interfaces.rs");
+}
+
+/// A deactivated plan must still decode correctly — `PlanInactive` is
+/// returned, not `PlanNotFound`. `PlanNotFound` is reserved for plan ids
+/// that do not exist at all.
+#[test]
+fn deactivated_plan_returns_plan_inactive_not_plan_not_found() {
+    let l = linked();
+    let plan_id = l.create_plan();
+    l.plans.deactivate_plan(&l.s.merchant, &plan_id);
+
+    // Subscribing to an existing-but-inactive plan must fail with PlanInactive.
+    expect_err(
+        l.s.client.try_subscribe(
+            &l.s.subscriber,
+            &l.s.merchant,
+            &l.s.token.address,
+            &AMOUNT,
+            &INTERVAL,
+            &CAP,
+            &plan_id,
+        ),
+        Error::PlanInactive,
+    );
+
+    // An id that was never created must fail with PlanNotFound, not PlanInactive.
+    expect_err(
+        l.s.client.try_subscribe(
+            &l.s.subscriber,
+            &l.s.merchant,
+            &l.s.token.address,
+            &AMOUNT,
+            &INTERVAL,
+            &CAP,
+            &9999,
+        ),
+        Error::PlanNotFound,
+    );
 }

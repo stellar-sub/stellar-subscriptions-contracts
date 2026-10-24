@@ -181,3 +181,77 @@ fn listings_reflect_current_state_not_state_at_creation() {
     assert_eq!(listed.status, SubStatus::Cancelled);
     assert_eq!(listed.total_charged, AMOUNT);
 }
+
+#[test]
+fn listings_stay_oldest_first_across_interleaved_parties() {
+    let s = Setup::new();
+    let other_subscriber = Address::generate(&s.env);
+    let other_merchant = Address::generate(&s.env);
+
+    // Creation order is a, b, c, d, e, with the two subscribers and the two
+    // merchants interleaved.
+    let a = s.subscribe(); // subscriber -> merchant
+    let b = s.client.subscribe(
+        &other_subscriber,
+        &other_merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+    );
+    let c = s.client.subscribe(
+        &s.subscriber,
+        &other_merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+    );
+    let d = s.client.subscribe(
+        &other_subscriber,
+        &s.merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+    );
+    let e = s.subscribe();
+
+    s.client.cancel(&other_subscriber, &b);
+    s.client.cancel(&s.subscriber, &c);
+
+    let mine = s.client.get_by_subscriber(&s.subscriber);
+    assert_eq!(mine.len(), 3);
+    assert_eq!(mine.get_unchecked(0).id, a);
+    assert_eq!(mine.get_unchecked(0).status, SubStatus::Active);
+    assert_eq!(mine.get_unchecked(1).id, c);
+    assert_eq!(mine.get_unchecked(1).status, SubStatus::Cancelled);
+    assert_eq!(mine.get_unchecked(2).id, e);
+    assert_eq!(mine.get_unchecked(2).status, SubStatus::Active);
+
+    let theirs = s.client.get_by_subscriber(&other_subscriber);
+    assert_eq!(theirs.len(), 2);
+    assert_eq!(theirs.get_unchecked(0).id, b);
+    assert_eq!(theirs.get_unchecked(0).status, SubStatus::Cancelled);
+    assert_eq!(theirs.get_unchecked(1).id, d);
+    assert_eq!(theirs.get_unchecked(1).status, SubStatus::Active);
+
+    let ours = s.client.get_by_merchant(&s.merchant);
+    assert_eq!(ours.len(), 3);
+    assert_eq!(ours.get_unchecked(0).id, a);
+    assert_eq!(ours.get_unchecked(0).status, SubStatus::Active);
+    assert_eq!(ours.get_unchecked(1).id, d);
+    assert_eq!(ours.get_unchecked(1).status, SubStatus::Active);
+    assert_eq!(ours.get_unchecked(2).id, e);
+    assert_eq!(ours.get_unchecked(2).status, SubStatus::Active);
+
+    let other = s.client.get_by_merchant(&other_merchant);
+    assert_eq!(other.len(), 2);
+    assert_eq!(other.get_unchecked(0).id, b);
+    assert_eq!(other.get_unchecked(0).status, SubStatus::Cancelled);
+    assert_eq!(other.get_unchecked(1).id, c);
+    assert_eq!(other.get_unchecked(1).status, SubStatus::Cancelled);
+}
