@@ -16,6 +16,10 @@ enum Action {
     Pause,
     Resume,
     Cancel,
+    /// The subscriber calls `refresh_allowance`.
+    RefreshAllowance,
+    /// The subscriber sets the token allowance directly, to any amount.
+    SetAllowance(i128),
 }
 
 fn action() -> impl Strategy<Value = Action> {
@@ -25,6 +29,8 @@ fn action() -> impl Strategy<Value = Action> {
         1 => Just(Action::Pause),
         1 => Just(Action::Resume),
         1 => Just(Action::Cancel),
+        2 => Just(Action::RefreshAllowance),
+        2 => (0i128..=2_000).prop_map(Action::SetAllowance),
     ]
 }
 
@@ -90,6 +96,28 @@ proptest! {
                     if s.client.try_cancel(&s.subscriber, &id).is_ok() {
                         cancelled = true;
                     }
+                }
+                Action::RefreshAllowance => {
+                    if s
+                        .client
+                        .try_refresh_allowance(&s.subscriber, &s.token.address)
+                        .is_ok()
+                    {
+                        // A refresh sets the allowance to exactly what is still
+                        // chargeable, so it can never raise a cap.
+                        prop_assert_eq!(s.allowance(), s.client.remaining_cap(&id));
+                    }
+                }
+                Action::SetAllowance(amount) => {
+                    // Direct approvals are not checked by the contract. They must
+                    // not affect CAP, INTERVAL or REVOCATION, which the checks
+                    // below still assert.
+                    s.token.approve(
+                        &s.subscriber,
+                        &s.client.address,
+                        &amount,
+                        &(s.ledger() + 4 * INTERVAL),
+                    );
                 }
             }
 

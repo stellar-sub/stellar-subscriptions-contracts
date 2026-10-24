@@ -16,5 +16,6 @@ mod integration;
 mod merchant_isolation;
 mod mock_registry;
 mod simulation_drift;
+mod ttl;
 mod validation;
 mod views;
