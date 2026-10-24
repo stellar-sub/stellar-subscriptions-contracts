@@ -145,6 +145,33 @@ Token allowances expire, so long subscriptions need a way to renew theirs.
   restoring charging on the normal schedule — and that a cancelled
   subscription contributes nothing to the refreshed amount (point 1).
 
+## Proptest regression files
+
+When `test/fuzz.rs` finds a counterexample it writes a regression file to
+`contracts/subscription/src/test/regressions/`. That file is committed so
+the failing case is re-run on every subsequent `cargo test`, preventing
+silent regressions.
+
+**Policy:**
+
+- The `regressions/` directory is tracked in git. Do not add it to
+  `.gitignore`.
+- If `cargo test -p subscription fuzz` produces a new file under
+  `regressions/`, commit it together with the fix in the same PR.
+- If the counterexample reveals a genuine invariant violation, treat it
+  as a security issue and follow [SECURITY.md](SECURITY.md).
+- If the counterexample is a false positive (environment issue, test
+  harness bug), open an issue, delete the file and explain why in the
+  commit message.
+
+To run the fuzz test and surface any failures:
+
+```bash
+cargo test -p subscription fuzz
+# or, for a deeper search:
+PROPTEST_CASES=500 cargo test -p subscription fuzz
+```
+
 ## Code style
 
 - `cargo fmt` and `cargo clippy -- -D warnings` must pass (CI enforces both).

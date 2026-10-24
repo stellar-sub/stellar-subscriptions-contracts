@@ -38,7 +38,11 @@ fn fuzz_cases() -> u32 {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: fuzz_cases(), ..ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig {
+        cases: fuzz_cases(),
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::WithSource("regressions"))),
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn invariants_hold_for_any_sequence_of_actions(
