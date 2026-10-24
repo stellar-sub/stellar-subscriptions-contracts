@@ -70,6 +70,17 @@ impl SubscriptionContract {
         Ok(())
     }
 
+    /// Transfer admin role to a new address (can be a contract account or multisig).
+    /// Only the current admin can call this.
+    pub fn transfer_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), Error> {
+        Self::require_admin(&env, &admin)?;
+        // New admin must authorize the transfer (works for contract accounts and multisigs)
+        new_admin.require_auth();
+        storage::write_admin(&env, &new_admin);
+        storage::bump_instance(&env);
+        Ok(())
+    }
+
     pub fn get_plan_contract(env: Env) -> Option<Address> {
         storage::read_plan_contract(&env)
     }
