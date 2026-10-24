@@ -8,6 +8,7 @@ mod fuzz;
 
 mod allowance;
 mod auth;
+mod batch_charge;
 mod charge;
 mod charge_status;
 mod events;

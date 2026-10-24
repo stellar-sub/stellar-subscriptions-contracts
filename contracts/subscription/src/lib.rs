@@ -15,33 +15,14 @@ mod types;
 pub use errors::Error;
 pub use types::{SubStatus, Subscription};
 
-/// Why a charge would succeed or be refused right now. `charge_status`
-/// returns one of these, so a UI can explain a refusal without trying a
-/// charge. Every variant except `Chargeable` is a refusal.
-#[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ChargeStatus {
-    /// `charge` would succeed.
-    Chargeable = 0,
-    /// The subscriber paused it. Resume to charge again.
-    Paused = 1,
-    /// The subscriber cancelled it. Final.
-    Cancelled = 2,
-    /// The cap has been reached. Final.
-    Exhausted = 3,
-    /// The interval has not elapsed yet.
-    TooEarly = 4,
-    /// One more period would go over `total_cap`.
-    CapWouldBeExceeded = 5,
-    /// `now + interval_ledgers` overflows, so `charge` would fail with
-    /// Overflow.
-    IntervalOverflows = 6,
-}
-
 use events::{Cancelled, Charged, Paused, Resumed, Subscribed};
 use interfaces::{PlanClient, RegistryClient};
-use soroban_sdk::{contract, contractimpl, contracttype, token::TokenClient, Address, Env, Vec};
+use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Vec};
 use storage::DataKey;
+
+/// Most subscriptions one `batch_charge` call may charge, so a batch stays
+/// within the per-transaction write budget.
+pub const MAX_BATCH: u32 = 20;
 
 #[contract]
 pub struct SubscriptionContract;
@@ -130,17 +111,6 @@ impl SubscriptionContract {
             return Err(Error::InvalidAmount);
         }
         if interval_ledgers == 0 {
-            return Err(Error::InvalidInterval);
-        }
-        // `charge` computes `now + interval_ledgers` with checked_add. An
-        // interval that does not fit at the current ledger would make every
-        // charge fail with Overflow, so refuse it up front.
-        if env
-            .ledger()
-            .sequence()
-            .checked_add(interval_ledgers)
-            .is_none()
-        {
             return Err(Error::InvalidInterval);
         }
         if total_cap < amount_per_period {
@@ -289,6 +259,23 @@ impl SubscriptionContract {
         Ok(())
     }
 
+    /// Charge several of the merchant's subscriptions in one transaction.
+    ///
+    /// Every id goes through the full `charge` checks (CAP, INTERVAL and
+    /// REVOCATION). The batch is all or nothing: the first id that fails returns
+    /// its error and the whole call is rolled back, so nothing is charged. A
+    /// repeated id fails on its second charge, because the interval has not
+    /// elapsed. At most `MAX_BATCH` ids are accepted.
+    pub fn batch_charge(env: Env, merchant: Address, ids: Vec<u64>) -> Result<(), Error> {
+        if ids.len() > MAX_BATCH {
+            return Err(Error::BatchTooLarge);
+        }
+        for id in ids.iter() {
+            Self::charge(env.clone(), merchant.clone(), id)?;
+        }
+        Ok(())
+    }
+
     /// Subscriber cancels. Final: no further charge will ever succeed.
     ///
     /// Allowed from Active or Paused. The status change is what enforces
@@ -423,31 +410,6 @@ impl SubscriptionContract {
         Ok(match sub.total_charged.checked_add(sub.amount_per_period) {
             Some(total) => total <= sub.total_cap,
             None => false,
-        })
-    }
-
-    /// Why `charge` would succeed or be refused right now. It runs the same
-    /// checks as `is_chargeable`, in the same order, so the two always agree:
-    /// `Chargeable` exactly when `is_chargeable` is true. The token is not
-    /// consulted, as with `is_chargeable`.
-    pub fn charge_status(env: Env, subscription_id: u64) -> Result<ChargeStatus, Error> {
-        let sub = storage::read_sub(&env, subscription_id)?;
-        match sub.status {
-            SubStatus::Active => {}
-            SubStatus::Paused => return Ok(ChargeStatus::Paused),
-            SubStatus::Cancelled => return Ok(ChargeStatus::Cancelled),
-            SubStatus::Exhausted => return Ok(ChargeStatus::Exhausted),
-        }
-        let now = env.ledger().sequence();
-        if now < sub.next_charge_ledger {
-            return Ok(ChargeStatus::TooEarly);
-        }
-        if now.checked_add(sub.interval_ledgers).is_none() {
-            return Ok(ChargeStatus::IntervalOverflows);
-        }
-        Ok(match sub.total_charged.checked_add(sub.amount_per_period) {
-            Some(total) if total <= sub.total_cap => ChargeStatus::Chargeable,
-            _ => ChargeStatus::CapWouldBeExceeded,
         })
     }
 

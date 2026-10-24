@@ -57,6 +57,6 @@ pub enum Error {
     PlanContractNotSet = 25,
     /// The linked registry refused an update.
     RegistryUpdateFailed = 26,
-    /// REVOCATION: the subscription has been ended by the merchant.
-    SubscriptionMerchantEnded = 27,
+    /// A batch holds more ids than `MAX_BATCH`.
+    BatchTooLarge = 27,
 }
