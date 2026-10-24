@@ -23,4 +23,6 @@ pub enum Error {
     AlreadyFinal = 10,
     Overflow = 11,
     PlanAlreadyRegistered = 12,
+    /// Page size exceeds maximum allowed.
+    PageSizeTooLarge = 13,
 }

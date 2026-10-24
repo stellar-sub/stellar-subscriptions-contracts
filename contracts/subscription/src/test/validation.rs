@@ -55,6 +55,44 @@ fn subscribe_records_the_authorization() {
 }
 
 #[test]
+fn ids_are_sequential_and_unique_across_many_subscribers() {
+    let s = Setup::new();
+    let subscribers: std::vec::Vec<Address> =
+        (0..5).map(|_| Address::generate(&s.env)).collect();
+    let merchants: std::vec::Vec<Address> = (0..3).map(|_| Address::generate(&s.env)).collect();
+
+    // Every subscription gets a distinct amount so each record is identifiable.
+    let mut created = std::vec::Vec::new();
+    for i in 0..25usize {
+        let subscriber = &subscribers[i % subscribers.len()];
+        let merchant = &merchants[i % merchants.len()];
+        let amount = AMOUNT + i as i128;
+        let id = s.client.subscribe(
+            subscriber,
+            merchant,
+            &s.token.address,
+            &amount,
+            &INTERVAL,
+            &(12 * amount),
+            &0,
+        );
+        created.push((id, subscriber, merchant, amount));
+    }
+
+    let ids: std::vec::Vec<u64> = created.iter().map(|(id, ..)| *id).collect();
+    assert_eq!(ids, (1..=25).collect::<std::vec::Vec<u64>>());
+
+    for (id, subscriber, merchant, amount) in created {
+        let sub = s.sub(id);
+        assert_eq!(&sub.subscriber, subscriber);
+        assert_eq!(&sub.merchant, merchant);
+        assert_eq!(sub.amount_per_period, amount);
+        assert_eq!(sub.total_cap, 12 * amount);
+        assert_eq!(sub.plan_id, 0);
+    }
+}
+
+#[test]
 fn subscribe_rejects_a_non_positive_amount() {
     let s = Setup::new();
     for amount in [0, -1, i128::MIN] {
