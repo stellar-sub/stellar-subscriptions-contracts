@@ -1,0 +1,25 @@
+[package]
+name = "subscription-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone crate: not part of the root workspace, so normal builds and
+# `cargo test --workspace` never compile it.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
+subscription = { path = "../contracts/subscription", features = ["testutils"] }
+
+[[bin]]
+name = "entry_points"
+path = "fuzz_targets/entry_points.rs"
+test = false
+doc = false
+bench = false
