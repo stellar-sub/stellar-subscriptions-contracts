@@ -1,0 +1,17 @@
+{
+  "_comment": "Per-contract wasm size budgets in bytes. Raising a budget requires a PR comment explaining why the growth is intentional. Update with: make wasm && scripts/check-wasm-size.sh --update",
+  "contracts": {
+    "subscription": {
+      "budget_bytes": 65536,
+      "notes": "Core subscription logic: authorize, charge, cancel, pause, resume. Largest contract due to invariant enforcement."
+    },
+    "plan": {
+      "budget_bytes": 32768,
+      "notes": "Merchant billing plan storage and validation."
+    },
+    "registry": {
+      "budget_bytes": 32768,
+      "notes": "Index of plans and subscriptions with aggregate stats."
+    }
+  }
+}
