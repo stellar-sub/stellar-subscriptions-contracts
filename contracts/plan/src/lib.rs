@@ -1,4 +1,5 @@
 #![no_std]
+#![warn(missing_docs)]
 //! # Plan Contract
 //!
 //! Merchants publish reusable billing terms — token, amount, interval and a
@@ -23,36 +24,57 @@ use storage::DataKey;
 pub const MAX_NAME_LEN: u32 = 64;
 
 /// The one registry call this contract makes.
+// `contractclient` generates an undocumentable companion client type from
+// this trait; the trait's own items are still documented below.
+#[allow(missing_docs)]
 #[contractclient(name = "RegistryClient")]
 pub trait RegistryInterface {
+    /// Count a plan created by this contract.
     fn register_plan(env: Env, plan_id: u64);
 }
 
 /// A merchant published a plan.
+// `contractevent` generates undocumentable topic/publish machinery from this
+// struct; its own fields are still documented below.
+#[allow(missing_docs)]
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlanCreated {
+    /// Id of the plan that was created.
     #[topic]
     pub plan_id: u64,
+    /// Merchant who created the plan.
     #[topic]
     pub merchant: Address,
+    /// The plan's name.
     pub name: String,
+    /// Token the plan bills in.
     pub token: Address,
+    /// Amount charged per interval.
     pub amount_per_period: i128,
+    /// Billing interval, in ledgers.
     pub interval_ledgers: u32,
+    /// Suggested cap for subscribers.
     pub default_cap: i128,
 }
 
 /// A merchant withdrew a plan from new subscriptions.
+// See the `#[allow(missing_docs)]` note on `PlanCreated` above.
+#[allow(missing_docs)]
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlanDeactivated {
+    /// Id of the plan that was deactivated.
     #[topic]
     pub plan_id: u64,
+    /// Merchant who deactivated the plan.
     #[topic]
     pub merchant: Address,
 }
 
+/// The plan contract's entry point.
+// `contract` generates an undocumentable registration shim from this struct.
+#[allow(missing_docs)]
 #[contract]
 pub struct PlanContract;
 
@@ -85,6 +107,7 @@ impl PlanContract {
         Ok(())
     }
 
+    /// The linked registry, if one has been set.
     pub fn get_registry(env: Env) -> Option<Address> {
         storage::read_registry(&env)
     }
@@ -173,6 +196,7 @@ impl PlanContract {
         Ok(())
     }
 
+    /// Look up a plan by id.
     pub fn get_plan(env: Env, plan_id: u64) -> Result<Plan, Error> {
         storage::read_plan(&env, plan_id)
     }

@@ -1,4 +1,5 @@
 #![no_std]
+#![warn(missing_docs)]
 //! # Registry Contract
 //!
 //! A read-optimised index of plans and subscriptions with aggregate stats,
@@ -42,6 +43,9 @@ pub struct Updated {
     pub active_subscriptions: u64,
 }
 
+/// The registry contract's entry point.
+// `contract` generates an undocumentable registration shim from this struct.
+#[allow(missing_docs)]
 #[contract]
 pub struct RegistryContract;
 
@@ -85,6 +89,7 @@ impl RegistryContract {
         Ok(())
     }
 
+    /// The contracts currently allowed to write to the registry.
     pub fn get_writers(env: Env) -> Result<Writers, Error> {
         storage::read_writers(&env)
     }
@@ -216,10 +221,12 @@ impl RegistryContract {
         Ok(())
     }
 
+    /// Current aggregate stats across every indexed plan and subscription.
     pub fn get_stats(env: Env) -> RegistryStats {
         storage::read_stats(&env)
     }
 
+    /// Look up one subscription's indexed record by id.
     pub fn get_subscription_record(
         env: Env,
         subscription_id: u64,
