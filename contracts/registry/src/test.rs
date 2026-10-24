@@ -409,3 +409,78 @@ fn only_the_plan_contract_can_register_plans() {
     assert!(result.is_err());
     assert_eq!(s.stats().total_plans, 0);
 }
+
+#[test]
+fn all_subscriptions_pages_are_contiguous_and_ordered() {
+    let s = Setup::new();
+    for id in 1..=10u64 {
+        s.register(id);
+    }
+
+    let page0 = s.client.get_all_subscriptions_page(&0, &3).unwrap();
+    assert_eq!(ids(page0), [1, 2, 3]);
+
+    let page1 = s.client.get_all_subscriptions_page(&1, &3).unwrap();
+    assert_eq!(ids(page1), [4, 5, 6]);
+
+    let page2 = s.client.get_all_subscriptions_page(&2, &3).unwrap();
+    assert_eq!(ids(page2), [7, 8, 9]);
+
+    let page3 = s.client.get_all_subscriptions_page(&3, &3).unwrap();
+    assert_eq!(ids(page3), [10]);
+
+    let empty = s.client.get_all_subscriptions_page(&10, &3).unwrap();
+    assert!(empty.is_empty());
+}
+
+#[test]
+fn active_subscriptions_pages_are_contiguous_and_ordered() {
+    let s = Setup::new();
+    for id in 1..=10u64 {
+        s.register(id);
+    }
+    // Cancel 2, 5, 8
+    s.client.update_subscription(&2, &0, &STATUS_CANCELLED);
+    s.client.update_subscription(&5, &0, &STATUS_CANCELLED);
+    s.client.update_subscription(&8, &0, &STATUS_CANCELLED);
+    // Active IDs: 1, 3, 4, 6, 7, 9, 10
+
+    let page0 = s.client.get_active_subscriptions_page(&0, &3).unwrap();
+    assert_eq!(ids(page0), [1, 3, 4]);
+
+    let page1 = s.client.get_active_subscriptions_page(&1, &3).unwrap();
+    assert_eq!(ids(page1), [6, 7, 9]);
+
+    let page2 = s.client.get_active_subscriptions_page(&2, &3).unwrap();
+    assert_eq!(ids(page2), [10]);
+
+    let empty = s.client.get_active_subscriptions_page(&10, &3).unwrap();
+    assert!(empty.is_empty());
+}
+
+#[test]
+fn page_size_cap_is_tested() {
+    let s = Setup::new();
+    s.register(1);
+
+    expect_err(
+        s.client.try_get_all_subscriptions_page(&0, &101),
+        Error::PageSizeTooLarge,
+    );
+    expect_err(
+        s.client.try_get_active_subscriptions_page(&0, &101),
+        Error::PageSizeTooLarge,
+    );
+    expect_err(
+        s.client.try_get_all_subscriptions_page(&0, &0),
+        Error::PageSizeTooLarge,
+    );
+    expect_err(
+        s.client.try_get_active_subscriptions_page(&0, &0),
+        Error::PageSizeTooLarge,
+    );
+
+    // Max page size (100) succeeds
+    assert!(s.client.get_all_subscriptions_page(&0, &100).is_ok());
+    assert!(s.client.get_active_subscriptions_page(&0, &100).is_ok());
+}

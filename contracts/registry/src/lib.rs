@@ -42,6 +42,9 @@ pub struct Updated {
     pub active_subscriptions: u64,
 }
 
+/// Maximum accepted page size in listings.
+pub const MAX_PAGE_SIZE: u32 = 100;
+
 #[contract]
 pub struct RegistryContract;
 
@@ -232,6 +235,34 @@ impl RegistryContract {
         storage::read_all_ids(&env)
     }
 
+    /// Paginated variant of `get_all_subscriptions`.
+    ///
+    /// `page` is 0-indexed: page 0 returns the first `limit` items, page 1
+    /// the next `limit`, etc. `limit` must be in `1..=MAX_PAGE_SIZE`.
+    pub fn get_all_subscriptions_page(
+        env: Env,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<u64>, Error> {
+        if limit == 0 || limit > MAX_PAGE_SIZE {
+            return Err(Error::PageSizeTooLarge);
+        }
+        let all = storage::read_all_ids(&env);
+        let start = page
+            .checked_mul(limit)
+            .ok_or(Error::Overflow)? as usize;
+        let end = start.saturating_add(limit as usize);
+        if start >= all.len() as usize {
+            return Ok(Vec::new(&env));
+        }
+        let end = end.min(all.len() as usize);
+        let mut out = Vec::new(&env);
+        for id in all[start..end].iter() {
+            out.push_back(id);
+        }
+        Ok(out)
+    }
+
     /// Ids of subscriptions whose last reported status is Active.
     pub fn get_active_subscriptions(env: Env) -> Result<Vec<u64>, Error> {
         let mut out = Vec::new(&env);
@@ -239,6 +270,39 @@ impl RegistryContract {
             if storage::read_record(&env, id)?.status == STATUS_ACTIVE {
                 out.push_back(id);
             }
+        }
+        Ok(out)
+    }
+
+    /// Paginated variant of `get_active_subscriptions`.
+    ///
+    /// `page` is 0-indexed: page 0 returns the first `limit` items, page 1
+    /// the next `limit`, etc. `limit` must be in `1..=MAX_PAGE_SIZE`.
+    pub fn get_active_subscriptions_page(
+        env: Env,
+        page: u32,
+        limit: u32,
+    ) -> Result<Vec<u64>, Error> {
+        if limit == 0 || limit > MAX_PAGE_SIZE {
+            return Err(Error::PageSizeTooLarge);
+        }
+        let mut active = Vec::new(&env);
+        for id in storage::read_all_ids(&env).iter() {
+            if storage::read_record(&env, id)?.status == STATUS_ACTIVE {
+                active.push_back(id);
+            }
+        }
+        let start = page
+            .checked_mul(limit)
+            .ok_or(Error::Overflow)? as usize;
+        let end = start.saturating_add(limit as usize);
+        if start >= active.len() as usize {
+            return Ok(Vec::new(&env));
+        }
+        let end = end.min(active.len() as usize);
+        let mut out = Vec::new(&env);
+        for id in active[start..end].iter() {
+            out.push_back(id);
         }
         Ok(out)
     }
