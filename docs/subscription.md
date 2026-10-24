@@ -12,14 +12,15 @@ cancel at any time.
 Everything else in this contract exists to serve these. Each is enforced in
 `charge()` before any funds move, and each has dedicated tests.
 
-| Invariant | Rule | Enforced by | Tests |
-|---|---|---|---|
-| **CAP** | `total_charged` never exceeds `total_cap`. A charge that would exceed it is rejected. | `total_charged.checked_add(amount_per_period)` compared against `total_cap` | `test/invariant_cap.rs` |
-| **INTERVAL** | At most one charge per interval. A charge before `next_charge_ledger` is rejected, even from the right merchant. | `now < next_charge_ledger` check; next charge scheduled from the *actual* charge ledger | `test/invariant_interval.rs` |
-| **REVOCATION** | After the subscriber cancels, no charge ever succeeds again. | Only `Active` can be charged; nothing leaves `Cancelled` | `test/invariant_revocation.rs` |
+| Invariant | Enforcing function | Unit tests | Fuzz coverage | Live check |
+|---|---|---|---|---|
+| **CAP** | [`charge()`](../contracts/subscription/src/lib.rs): checked `total_charged + amount_per_period` against `total_cap` | [`invariant_cap.rs`](../contracts/subscription/src/test/invariant_cap.rs), especially `cap_rejects_charge_that_would_exceed_total_cap` | `invariants_hold_for_any_sequence_of_actions` in [`fuzz.rs`](../contracts/subscription/src/test/fuzz.rs) | `CAP` case in [`verify-testnet.sh`](../scripts/verify-testnet.sh) |
+| **INTERVAL** | [`charge()`](../contracts/subscription/src/lib.rs): compare with `next_charge_ledger`, then schedule from the actual charge ledger | [`invariant_interval.rs`](../contracts/subscription/src/test/invariant_interval.rs), especially `interval_rejects_second_charge_in_the_same_ledger` and `interval_late_charge_does_not_unlock_catch_up_charges` | `invariants_hold_for_any_sequence_of_actions` in [`fuzz.rs`](../contracts/subscription/src/test/fuzz.rs) | `INTERVAL` cases in [`verify-testnet.sh`](../scripts/verify-testnet.sh) |
+| **REVOCATION** | [`charge()`](../contracts/subscription/src/lib.rs): only `Active` is chargeable; [`cancel()`](../contracts/subscription/src/lib.rs) writes final `Cancelled` status | [`invariant_revocation.rs`](../contracts/subscription/src/test/invariant_revocation.rs), especially `revocation_charge_after_cancel_is_rejected` and `revocation_is_permanent` | `invariants_hold_for_any_sequence_of_actions` in [`fuzz.rs`](../contracts/subscription/src/test/fuzz.rs) | `REVOCATION` cases in [`verify-testnet.sh`](../scripts/verify-testnet.sh) |
 
-`test/fuzz.rs` additionally drives random sequences of charge / pause /
-resume / cancel with random time gaps and asserts all three after every step.
+The fuzz test drives random sequences of charge / pause / resume / cancel with
+random time gaps and asserts all three after every step. Run the live checks
+after a demo Testnet deployment with `make verify`.
 
 ## Lifecycle
 

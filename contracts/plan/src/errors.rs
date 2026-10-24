@@ -26,4 +26,6 @@ pub enum Error {
     AlreadyConfigured = 12,
     /// The linked registry refused to count the plan.
     RegistryUpdateFailed = 13,
+    /// `page_size` must be between 1 and 1000.
+    InvalidPageSize = 14,
 }

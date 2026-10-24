@@ -57,4 +57,9 @@ pub enum Error {
     PlanContractNotSet = 25,
     /// The linked registry refused an update.
     RegistryUpdateFailed = 26,
+    /// The end ledger must be after the current ledger.
+    InvalidExpiry = 27,
+    /// The subscription's end ledger has passed, so it can no longer be
+    /// charged.
+    SubscriptionExpired = 28,
 }

@@ -36,6 +36,7 @@ pub trait RegistryInterface {
         subscription_id: u64,
         subscriber: Address,
         merchant: Address,
+        token: Address,
     );
     fn update_subscription(env: Env, subscription_id: u64, total_charged: i128, status: u32);
 }
