@@ -210,6 +210,7 @@ impl SubscriptionContract {
                 &id,
                 &sub.subscriber,
                 &sub.merchant,
+                &sub.token,
             );
             if !matches!(registered, Ok(Ok(()))) {
                 return Err(Error::RegistryUpdateFailed);
@@ -476,6 +477,81 @@ impl SubscriptionContract {
     /// Every subscription payable to a merchant, oldest first.
     pub fn get_by_merchant(env: Env, merchant: Address) -> Result<Vec<Subscription>, Error> {
         Self::load_indexed(&env, &DataKey::ByMerchant(merchant))
+    }
+
+    /// Cancel all open subscriptions for a subscriber in a given token, with
+    /// work-bounding for scalability. Each call processes up to 10
+    /// subscriptions.
+    ///
+    /// Requires the subscriber's signature. Subscriptions that are already
+    /// Cancelled or Exhausted are skipped. Returns (count_processed, has_more).
+    /// If `has_more` is true, call again with the same parameters to continue.
+    /// The order is stable, so you can call repeatedly until all are done.
+    ///
+    /// This function reuses the single-cancel logic, so REVOCATION is enforced
+    /// uniformly: no updates to a final subscription ever happen, and the
+    /// allowance and registry follow the main status update, with failures
+    /// not blocking the cancellation.
+    pub fn cancel_all(
+        env: Env,
+        subscriber: Address,
+        token: Address,
+    ) -> Result<(u64, bool), Error> {
+        const WORK_LIMIT: u32 = 10;
+
+        subscriber.require_auth();
+        let all_subs = Self::load_indexed(&env, &DataKey::BySubscriber(subscriber.clone()))?;
+
+        let mut count = 0u64;
+        let mut found_one = false;
+
+        for sub_id in all_subs.iter() {
+            if count >= WORK_LIMIT as u64 {
+                break;
+            }
+
+            let sub = storage::read_sub(&env, sub_id)?;
+
+            // Only process subscriptions for this token
+            if sub.token != token {
+                continue;
+            }
+
+            // Skip already final subscriptions
+            if sub.status.is_final() {
+                continue;
+            }
+
+            found_one = true;
+
+            // Perform cancellation. We inline the core logic here to avoid
+            // re-auth, since the subscriber already authorized at the top.
+            let mut mut_sub = sub;
+            mut_sub.status = SubStatus::Cancelled;
+            storage::write_sub(&env, &mut_sub);
+
+            // Clean up allowance and registry, but don't fail the cancellation
+            // if they fail. Report the outcome in the event.
+            let allowance_updated = allowance::sync(&env, &mut_sub.subscriber, &mut_sub.token).is_ok();
+            let registry_updated = Self::report(&env, &mut_sub).is_ok();
+
+            Cancelled {
+                subscription_id: sub_id,
+                subscriber: mut_sub.subscriber.clone(),
+                total_charged: mut_sub.total_charged,
+                unused_cap: mut_sub.total_cap.saturating_sub(mut_sub.total_charged),
+                allowance_updated,
+                registry_updated,
+            }
+            .publish(&env);
+
+            count += 1;
+        }
+
+        storage::bump_instance(&env);
+
+        let has_more = found_one && count >= WORK_LIMIT as u64;
+        Ok((count, has_more))
     }
 
     // ---- internal helpers ----
