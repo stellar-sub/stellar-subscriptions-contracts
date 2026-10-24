@@ -24,6 +24,8 @@ pub enum DataKey {
     ByMerchant(Address),
     /// Persistent: ids of every plan, oldest first.
     AllPlans,
+    /// Persistent: ids of every plan billed in a token, oldest first.
+    ByToken(Address),
     /// Instance: linked registry contract, if any.
     Registry,
 }

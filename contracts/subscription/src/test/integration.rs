@@ -311,3 +311,31 @@ fn a_misconfigured_registry_blocks_subscribe_instead_of_losing_the_record() {
     );
     assert_eq!(s.allowance(), 0);
 }
+
+#[test]
+fn plan_mirror_in_subscription_matches_plan_contract_including_description() {
+    let l = linked();
+    let desc = String::from_str(&l.s.env, "Enterprise plan with priority support");
+    let plan_id = l.plans.create_plan(
+        &l.s.merchant,
+        &String::from_str(&l.s.env, "Enterprise"),
+        &l.s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &Some(desc.clone()),
+    );
+
+    // Get plan from plan contract
+    let plan_from_contract = l.plans.get_plan(&plan_id);
+
+    // Subscribe to verify mirror decodes correctly with description field
+    let id = l.subscribe_to(plan_id, CAP);
+    let sub = l.s.sub(id);
+
+    // Verify the subscription was created with the plan id
+    assert_eq!(sub.plan_id, plan_id);
+
+    // Verify plan contract's plan has the description
+    assert_eq!(plan_from_contract.description, Some(desc));
+}

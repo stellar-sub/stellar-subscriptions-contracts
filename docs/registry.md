@@ -37,6 +37,17 @@ pub struct SubscriptionRecord {
 }
 ```
 
+## Events
+
+Each successful write emits exactly one event. A rejected call emits nothing.
+
+| Event | Emitted by | Data |
+|---|---|---|
+| `Registered` | `register_subscription` | `subscription_id`, `total_subscriptions` (new total) |
+| `Updated` | `update_subscription` | `subscription_id`, `total_charged`, `status` (new values) |
+
+Indexers can follow these events instead of polling `get_stats`.
+
 ## Functions
 
 | Function | Caller | Notes |
@@ -49,7 +60,9 @@ pub struct SubscriptionRecord {
 | `get_stats() -> RegistryStats` | anyone | |
 | `get_subscription_record(subscription_id)` | anyone | |
 | `get_all_subscriptions() -> Vec<u64>` | anyone | Oldest first. |
+| `get_all_subscriptions_page(page, limit) -> Result<Vec<u64>, Error>` | anyone | Paginated, oldest first. |
 | `get_active_subscriptions() -> Vec<u64>` | anyone | Oldest first. |
+| `get_active_subscriptions_page(page, limit) -> Result<Vec<u64>, Error>` | anyone | Paginated, oldest first. |
 | `get_writers() -> Writers` | anyone | |
 
 ## Update rules
@@ -91,5 +104,6 @@ index can never reach a state the subscription contract could not:
 | 10 | `AlreadyFinal` |
 | 11 | `Overflow` |
 | 12 | `PlanAlreadyRegistered` |
+| 13 | `PageSizeTooLarge` |
 
 Codes are append-only.

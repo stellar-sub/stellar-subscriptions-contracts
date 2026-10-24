@@ -104,3 +104,84 @@ fn charge_fails_cleanly_when_the_subscriber_cannot_pay() {
     // A failed transfer must not count against the cap or the schedule.
     assert_eq!(s.snapshot(id), before);
 }
+
+#[test]
+fn lower_cap_reduces_the_cap_and_allowance() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    let new_cap = CAP / 2;
+
+    s.client.lower_cap(&s.subscriber, &id, &new_cap);
+
+    let sub = s.sub(id);
+    assert_eq!(sub.total_cap, new_cap);
+    assert_eq!(s.client.remaining_cap(&id), new_cap);
+    assert_eq!(s.allowance(), new_cap);
+}
+
+#[test]
+fn lower_cap_is_rejected_if_attempting_to_raise() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    let before = s.snapshot(id);
+
+    expect_err(
+        s.client.try_lower_cap(&s.subscriber, &id, &(CAP + 100)),
+        Error::CapCannotRaise,
+    );
+    assert_eq!(s.snapshot(id), before);
+}
+
+#[test]
+fn lower_cap_is_rejected_if_below_charged_amount() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.charge(&s.merchant, &id);
+    let before = s.snapshot(id);
+
+    expect_err(
+        s.client.try_lower_cap(&s.subscriber, &id, &(AMOUNT - 1)),
+        Error::CapBelowCharged,
+    );
+    assert_eq!(s.snapshot(id), before);
+}
+
+#[test]
+fn lower_cap_succeeds_when_equal_to_charged_amount() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.charge(&s.merchant, &id);
+
+    s.client.lower_cap(&s.subscriber, &id, &AMOUNT);
+
+    let sub = s.sub(id);
+    assert_eq!(sub.total_cap, AMOUNT);
+    assert_eq!(sub.total_charged, AMOUNT);
+    assert_eq!(s.client.remaining_cap(&id), 0);
+}
+
+#[test]
+fn lower_cap_is_never_exceeded_by_later_charges() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.charge(&s.merchant, &id);
+    s.advance(INTERVAL);
+
+    s.client.lower_cap(&s.subscriber, &id, &(AMOUNT + 50));
+
+    // The next charge would exceed the lowered cap.
+    assert!(!s.client.is_chargeable(&id));
+    expect_err(s.client.try_charge(&s.merchant, &id), Error::CapExceeded);
+}
+
+#[test]
+fn lower_cap_works_on_paused_subscriptions() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.pause(&s.subscriber, &id);
+
+    s.client.lower_cap(&s.subscriber, &id, &(CAP / 2));
+
+    assert_eq!(s.sub(id).total_cap, CAP / 2);
+    assert_eq!(s.sub(id).status, SubStatus::Paused);
+}
