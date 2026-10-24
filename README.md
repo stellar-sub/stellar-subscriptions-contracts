@@ -97,8 +97,10 @@ contracts/
   plan/           merchant billing plans
   registry/       index of plans and subscriptions
 docs/             per-contract reference
+examples/         runnable Testnet CLI examples (see examples/README.md)
 scripts/deploy.sh deploy, initialize and link all three
 DEPLOYMENTS.md    live contract ids
+.github/          issue and PR templates, CODEOWNERS
 ```
 
 ## Deployments
@@ -113,4 +115,13 @@ Testnet contract ids are in [DEPLOYMENTS.md](DEPLOYMENTS.md).
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), in particular the section on adding
-features without weakening the invariants.
+features without weakening the invariants. New issues and pull requests use
+the templates in [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE) and
+[`.github/pull_request_template.md`](.github/pull_request_template.md); the PR
+template includes the CAP, INTERVAL and REVOCATION checks.
+
+- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Getting help: [SUPPORT.md](SUPPORT.md)
+- Maintainers and review routing: [`.github/CODEOWNERS`](.github/CODEOWNERS)
+- Mainnet readiness (mainnet is **not** deployed): [docs/mainnet-readiness.md](docs/mainnet-readiness.md)
+- Runnable Testnet examples: [examples/](examples/)
