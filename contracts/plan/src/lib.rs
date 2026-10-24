@@ -96,12 +96,28 @@ impl PlanContract {
         Ok(())
     }
 
+    /// Transfer admin role to a new address (can be a contract account or multisig).
+    /// Only the current admin can call this.
+    pub fn transfer_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), Error> {
+        let stored = storage::read_admin(&env)?;
+        admin.require_auth();
+        if stored != admin {
+            return Err(Error::Unauthorized);
+        }
+        // New admin must authorize the transfer (works for contract accounts and multisigs)
+        new_admin.require_auth();
+        storage::write_admin(&env, &new_admin);
+        storage::bump_instance(&env);
+        Ok(())
+    }
+
     pub fn get_registry(env: Env) -> Option<Address> {
         storage::read_registry(&env)
     }
 
     /// Publish a plan. Requires the merchant's signature. The plan is active
-    /// immediately.
+    /// immediately. `name` must be 1 to `MAX_NAME_LEN` bytes of UTF-8. The
+    /// limit counts bytes, not characters, so multi-byte text uses it faster.
     pub fn create_plan(
         env: Env,
         merchant: Address,

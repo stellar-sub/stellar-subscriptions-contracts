@@ -42,3 +42,22 @@ pub struct SubscriptionRecord {
     pub total_charged: i128,
     pub status: u32,
 }
+
+/// Event payload emitted when a subscription is first registered.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Registered {
+    pub id: u64,
+    pub total_subscriptions: u64,
+    pub active_subscriptions: u64,
+}
+
+/// Event payload emitted when an existing subscription record is updated.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Updated {
+    pub id: u64,
+    pub total_subscriptions: u64,
+    pub active_subscriptions: u64,
+    pub total_charged_volume: i128,
+}

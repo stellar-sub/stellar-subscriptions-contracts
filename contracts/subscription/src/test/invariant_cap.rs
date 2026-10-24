@@ -75,3 +75,23 @@ fn cap_uses_checked_arithmetic_on_total_charged() {
     expect_err(s.client.try_charge(&s.merchant, &id), Error::Overflow);
     assert_eq!(s.snapshot(id), before);
 }
+
+#[test]
+fn cap_charge_near_u32_max_overflows_cleanly() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Move the ledger close enough to u32::MAX that scheduling the next charge
+    // (now + interval_ledgers) overflows u32 even for a normal interval.
+    s.set_ledger(u32::MAX - INTERVAL / 2);
+
+    // The interval overflow is visible to is_chargeable, so a charge that
+    // cannot be scheduled is never reported as chargeable.
+    assert!(!s.client.is_chargeable(&id));
+
+    let before = s.snapshot(id);
+    expect_err(s.client.try_charge(&s.merchant, &id), Error::Overflow);
+    // The overflow is detected before any state change or transfer, so the
+    // subscription is left exactly as it was.
+    assert_eq!(s.snapshot(id), before);
+}
