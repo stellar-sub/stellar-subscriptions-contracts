@@ -1,0 +1,38 @@
+name: Fuzz (cargo-fuzz)
+
+on:
+  schedule:
+    - cron: "23 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Fuzz time in seconds"
+        default: "600"
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install nightly Rust
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      # Fails the job if the fuzzer finds a crash.
+      - name: Fuzz entry points
+        working-directory: fuzz
+        run: cargo +nightly fuzz run entry_points -- -max_total_time=${{ github.event.inputs.seconds || '600' }}
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts

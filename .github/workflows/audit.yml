@@ -1,0 +1,33 @@
+name: Audit
+
+# Checks Cargo.lock against the RustSec advisory database. Runs on every PR
+# that could change dependencies, on pushes to main, and daily so a newly
+# published advisory is reported even when the repository is quiet.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        run: rustup show
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # Exits non-zero on any vulnerability, so a failing advisory shows as a
+      # red check on the PR. Warnings (unmaintained, yanked) are printed too.
+      - name: Audit dependencies
+        run: cargo audit

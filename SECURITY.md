@@ -98,6 +98,30 @@ and changes nothing (tested).
 - **Not audited.** No third-party audit has been done. These contracts are
   deployed on Testnet only.
 
+## Experiment: cancel against a budget-exhausting token (result pending)
+
+**Status: not yet run. No result is recorded here.** The open item under
+"Known limits" (resource exhaustion in a hostile token) needs a Testnet run
+because native tests cannot simulate budget exhaustion. The hostile token is
+in `examples/budget-exhausting-token/`: after `arm`, its `approve` loops until
+the transaction budget is spent. It is a test fixture and must never be used
+with real funds.
+
+Procedure:
+
+1. Build the token: `cd examples/budget-exhausting-token && stellar contract build`.
+2. Deploy it and the subscription contract to Testnet (`make deploy` for the
+   latter). Fund a subscriber and a merchant.
+3. Subscribe with the token while it is unarmed.
+4. Call the token's `arm`.
+5. Call `cancel` as the subscriber. Record whether it succeeds, or the exact
+   error (for example a resource-limit trap), the transaction hash, and the
+   simulated and submitted resource usage.
+6. If `cancel` fails, open a follow-up issue proposing a fix, such as
+   marking the subscription cancelled before the token call.
+
+Result: **pending a Testnet run.**
+
 ## Reporting a vulnerability
 
 Please do **not** open a public issue for a security problem. Use GitHub's

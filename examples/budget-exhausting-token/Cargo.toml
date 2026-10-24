@@ -1,0 +1,22 @@
+[package]
+name = "budget-exhausting-token"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "HOSTILE test token for the Testnet experiment in SECURITY.md. Never deploy to Mainnet."
+
+# Standalone crate: not part of the root workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = "27.0.6"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+panic = "abort"
+lto = true
+codegen-units = 1
