@@ -41,6 +41,22 @@ fn subscribe_to(s: &Setup, plan_id: u64) -> u64 {
 }
 
 #[test]
+fn get_by_plan_lists_all_five_subscriptions_in_creation_order() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+    let ids: std::vec::Vec<u64> = (0..5).map(|_| subscribe_to(&s, plan)).collect();
+
+    let listed: std::vec::Vec<u64> = s
+        .client
+        .get_by_plan(&plan)
+        .iter()
+        .map(|sub| sub.id)
+        .collect();
+    assert_eq!(listed, ids);
+    assert_eq!(s.client.count_by_plan(&plan), 5);
+}
+
+#[test]
 fn a_plan_lists_only_its_own_subscriptions_in_creation_order() {
     let (s, plans) = with_plans();
     let first_plan = create_plan(&s, &plans);

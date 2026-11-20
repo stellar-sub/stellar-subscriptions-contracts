@@ -1,7 +1,10 @@
 # Design proposal: optional end ledger for subscriptions (#52)
 
-Status: proposal only. No code has been written for this issue, because the
-issue asks for maintainer agreement on the design first.
+Status: implemented. The design below was agreed and shipped: `Subscription`
+now carries `expires_at: u32` (0 means no expiry), `subscribe_until` is the
+entry point that sets it, `charge` refuses with `Error::SubscriptionExpired`
+once the current ledger passes a non-zero `expires_at`, and the `Subscribed`
+event carries the field.
 
 ## Problem
 
@@ -10,9 +13,9 @@ cap is reached or it is cancelled.
 
 ## Proposal
 
-Add an optional end ledger, `expires_at: Option<u32>`, to the subscription.
-After that ledger `charge` is refused. The expiry can only narrow what the
-merchant may do, so it never lets a merchant charge more.
+Add an end ledger, `expires_at: u32`, to the subscription, where `0` means no
+expiry. After that ledger `charge` is refused. The expiry can only narrow what
+the merchant may do, so it never lets a merchant charge more.
 
 Because `subscribe` takes this as a new argument, the proposal offers two ways
 to add it:
@@ -25,9 +28,12 @@ to add it:
 
 Either way:
 
-- `charge` refuses with a new error once the current ledger passes `expires_at`,
-  and `charge_status` reports it as its own reason.
-- A subscription with no expiry behaves exactly as today.
+- `charge` refuses with `Error::SubscriptionExpired` once the current ledger
+  passes a non-zero `expires_at`, and `charge_status` reports it as its own
+  reason.
+- A subscription with no expiry (`expires_at == 0`) behaves exactly as today.
+- The `Subscribed` event includes `expires_at`, and the golden XDR test covers
+  it.
 
 ## Trade-offs
 
@@ -36,8 +42,9 @@ Either way:
 - Adding a field to `Subscription` changes the stored layout, so `VERSION` must
   be bumped in either option.
 
-## Open questions for maintainers
+## Resolved questions
 
-- Should the expiry be a ledger number, as proposed, or a duration from
-  subscription time?
-- Is `subscribe_until` acceptable, or should `subscribe` change?
+- The expiry is a ledger number, as proposed, not a duration from subscription
+  time.
+- `subscribe_until` was accepted; `subscribe` is unchanged and sets
+  `expires_at` to `0`.

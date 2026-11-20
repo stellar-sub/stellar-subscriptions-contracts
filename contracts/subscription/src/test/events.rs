@@ -32,6 +32,7 @@ fn subscribe_emits_subscribed() {
             interval_ledgers: INTERVAL,
             total_cap: CAP,
             plan_id: 0,
+            expires_at: 0,
         },
     );
 }

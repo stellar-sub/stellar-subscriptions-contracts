@@ -21,6 +21,8 @@ pub struct Subscribed {
     pub interval_ledgers: u32,
     pub total_cap: i128,
     pub plan_id: u64,
+    /// Ledger after which the subscription can no longer be charged.
+    pub expires_at: u32,
 }
 
 /// A merchant pulled one period's charge.

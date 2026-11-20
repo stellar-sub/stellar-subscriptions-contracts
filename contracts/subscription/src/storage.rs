@@ -162,6 +162,7 @@ mod golden {
             DataKey::Sub(_) => {}
             DataKey::BySubscriber(_) => {}
             DataKey::ByMerchant(_) => {}
+            DataKey::ByPlan(_) => {}
             DataKey::PlanContract => {}
             DataKey::Registry => {}
         }
@@ -172,12 +173,13 @@ mod golden {
         let env = Env::default();
         let addr = Address::generate(&env);
 
-        let cases: [(&str, DataKey); 7] = [
+        let cases: [(&str, DataKey); 8] = [
             ("Admin", DataKey::Admin),
             ("NextId", DataKey::NextId),
             ("Sub", DataKey::Sub(7)),
             ("BySubscriber", DataKey::BySubscriber(addr.clone())),
             ("ByMerchant", DataKey::ByMerchant(addr)),
+            ("ByPlan", DataKey::ByPlan(42)),
             ("PlanContract", DataKey::PlanContract),
             ("Registry", DataKey::Registry),
         ];
@@ -217,6 +219,13 @@ mod golden {
                     assert!(
                         matches!(vec[1], ScVal::Address(_)),
                         "{name} payload must be an Address"
+                    );
+                }
+                DataKey::ByPlan(_) => {
+                    assert_eq!(vec.len(), 2, "ByPlan must carry one value");
+                    assert!(
+                        matches!(vec[1], ScVal::U64(_)),
+                        "ByPlan payload must be U64"
                     );
                 }
             }

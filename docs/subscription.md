@@ -49,12 +49,13 @@ are never renumbered.
 | `set_plan_contract(admin, plan_contract)` | admin | Once, before the first subscription. |
 | `set_registry(admin, registry)` | admin | Once, before the first subscription. |
 | `subscribe(subscriber, merchant, token, amount_per_period, interval_ledgers, total_cap, plan_id) -> u64` | **subscriber** | Grants consent and approves the token allowance. |
+| `subscribe_until(subscriber, merchant, token, amount_per_period, interval_ledgers, total_cap, plan_id, expires_at) -> u64` | **subscriber** | As `subscribe`, but the subscription expires at ledger `expires_at`. |
 | `charge(merchant, subscription_id)` | **merchant** | Must be the subscription's merchant. |
 | `cancel(subscriber, subscription_id)` | **subscriber** | Final. Can never be blocked by the token or registry. |
 | `pause(subscriber, subscription_id)` | **subscriber** | |
 | `resume(subscriber, subscription_id)` | **subscriber** | |
 | `refresh_allowance(subscriber, token) -> i128` | **subscriber** | Re-approves the outstanding cap with a fresh expiry. |
-| `get_subscription`, `is_chargeable`, `remaining_cap`, `get_by_subscriber`, `get_by_merchant`, `get_plan_contract`, `get_registry` | none | Views. |
+| `get_subscription`, `is_chargeable`, `remaining_cap`, `get_by_subscriber`, `get_by_merchant`, `get_by_plan`, `get_by_plan_page`, `count_by_plan`, `get_plan_contract`, `get_registry` | none | Views. |
 
 The admin **cannot** charge, cancel, pause or resume anything, and cannot
 change a link once set.
@@ -68,9 +69,10 @@ changes:
 2. Load the subscription → `SubscriptionNotFound`
 3. Caller is the subscription's merchant → `NotMerchant`
 4. Status is `Active` → `SubscriptionPaused` / `SubscriptionCancelled` / `SubscriptionExhausted`
-5. `now >= next_charge_ledger` → `IntervalNotElapsed`
-6. `total_charged.checked_add(amount_per_period)` → `Overflow`
-7. New total `<= total_cap` → `CapExceeded`
+5. `now < expires_at` → `SubscriptionExpired` (see [Expiry](#expiry))
+6. `now >= next_charge_ledger` → `IntervalNotElapsed`
+7. `total_charged.checked_add(amount_per_period)` → `Overflow`
+8. New total `<= total_cap` → `CapExceeded`
 
 Then state is written (`total_charged`, `last_charge_ledger`,
 `next_charge_ledger = now + interval_ledgers`, and `Exhausted` if the cap is
@@ -86,6 +88,17 @@ row to "catch up".
 A cap that is not a whole number of periods is allowed: with `amount = 100`
 and `cap = 250`, two charges succeed and the third is rejected with
 `CapExceeded`. The subscription stays `Active` with 50 unchargeable.
+
+## Expiry
+
+Every subscription carries an `expires_at: u32` ledger. `subscribe` sets it to
+the maximum (`u32::MAX`), i.e. no expiry; `subscribe_until` takes it as an
+argument and rejects `expires_at <= current ledger` with `InvalidExpiry`.
+
+Once `now >= expires_at`, `charge` returns `SubscriptionExpired` and no state
+changes. Expiry is a liveness bound only: it never moves funds, never changes
+the status, and `cancel` is never blocked by it. A subscription that expires
+with cap left simply stops being chargeable.
 
 ## Pause and resume
 
@@ -141,6 +154,17 @@ chooses their own `total_cap`.
 The plan is checked only at `subscribe`. Deactivating a plan afterwards has no
 effect on existing subscriptions — what the subscriber authorized governs.
 
+Every non-zero `plan_id` is also recorded in a `ByPlan(plan_id)` index at
+`subscribe`. That index is readable:
+
+- `get_by_plan(plan_id)` returns every subscription for the plan;
+- `get_by_plan_page(plan_id, start, limit)` returns a page of them;
+- `count_by_plan(plan_id)` returns the number of subscriptions for the plan.
+
+Ad-hoc subscriptions (`plan_id = 0`) are **not** indexed and never appear in
+these views. The index is append-only: cancelled and exhausted subscriptions
+remain listed, so callers should check status if they only want live ones.
+
 ## Registry
 
 If a registry is linked, `subscribe` registers the subscription and `charge`,
@@ -153,7 +177,7 @@ succeeds and reports the outcome in the event's `registry_updated` flag.
 
 | Event | Topics | Data |
 |---|---|---|
-| `subscribed` | subscription_id, subscriber, merchant | token, amount_per_period, interval_ledgers, total_cap, plan_id |
+| `subscribed` | subscription_id, subscriber, merchant | token, amount_per_period, interval_ledgers, total_cap, plan_id, expires_at |
 | `charged` | subscription_id, merchant | token, amount, total_charged, next_charge_ledger, exhausted |
 | `cancelled` | subscription_id, subscriber | total_charged, unused_cap, allowance_updated, registry_updated |
 | `paused` | subscription_id, subscriber | ledger |
@@ -191,6 +215,8 @@ A rejected call emits nothing.
 | 24 | `AlreadyConfigured` | A link was already set, or a subscription already exists. |
 | 25 | `PlanContractNotSet` | Non-zero `plan_id` with no plan contract linked. |
 | 26 | `RegistryUpdateFailed` | |
+| 27 | `SubscriptionExpired` | `now >= expires_at`. No state changed. |
+| 28 | `InvalidExpiry` | `expires_at <= current ledger` in `subscribe_until`. |
 
 Codes are append-only.
 
@@ -205,7 +231,8 @@ Codes are append-only.
 - **Token** is chosen by the subscriber and merchant. A misbehaving token can
   make charges fail, but cannot make the contract record a charge that did not
   transfer.
-- `get_by_subscriber` / `get_by_merchant` and the allowance recomputation
-  iterate over every subscription that party has ever had. Parties with very
-  large numbers of subscriptions should be served by an off-chain indexer
-  reading the events.
+- `get_by_subscriber` / `get_by_merchant` / `get_by_plan` and the allowance
+  recomputation iterate over every subscription that party or plan has ever
+  had. Parties or plans with very large numbers of subscriptions should be
+  served by an off-chain indexer reading the events, or by
+  `get_by_plan_page`.

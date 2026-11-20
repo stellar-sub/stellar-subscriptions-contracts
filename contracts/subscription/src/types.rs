@@ -62,4 +62,7 @@ pub struct Subscription {
     /// Trial period in ledgers (0 if no trial). First charge is delayed by
     /// this amount.
     pub trial_ledgers: u32,
+    /// Ledger after which the subscription can no longer be charged
+    /// (0 means no expiry).
+    pub expires_at: u32,
 }

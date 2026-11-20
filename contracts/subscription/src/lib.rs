@@ -101,7 +101,65 @@ impl SubscriptionContract {
         total_cap: i128,
         plan_id: u64,
     ) -> Result<u64, Error> {
-        storage::read_admin(&env)?;
+        Self::subscribe_inner(
+            &env,
+            subscriber,
+            merchant,
+            token,
+            amount_per_period,
+            interval_ledgers,
+            total_cap,
+            plan_id,
+            0,
+        )
+    }
+
+    /// Same as `subscribe`, but the subscription expires at `expires_at`
+    /// (a ledger sequence number). Once the current ledger is past
+    /// `expires_at`, `charge` fails with `SubscriptionExpired`.
+    ///
+    /// `expires_at` must be strictly in the future; 0 means no expiry.
+    #[allow(clippy::too_many_arguments)]
+    pub fn subscribe_until(
+        env: Env,
+        subscriber: Address,
+        merchant: Address,
+        token: Address,
+        amount_per_period: i128,
+        interval_ledgers: u32,
+        total_cap: i128,
+        plan_id: u64,
+        expires_at: u32,
+    ) -> Result<u64, Error> {
+        if expires_at != 0 && expires_at <= env.ledger().sequence() {
+            return Err(Error::InvalidExpiry);
+        }
+        Self::subscribe_inner(
+            &env,
+            subscriber,
+            merchant,
+            token,
+            amount_per_period,
+            interval_ledgers,
+            total_cap,
+            plan_id,
+            expires_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn subscribe_inner(
+        env: &Env,
+        subscriber: Address,
+        merchant: Address,
+        token: Address,
+        amount_per_period: i128,
+        interval_ledgers: u32,
+        total_cap: i128,
+        plan_id: u64,
+        expires_at: u32,
+    ) -> Result<u64, Error> {
+        storage::read_admin(env)?;
         subscriber.require_auth();
 
         if subscriber == merchant {
@@ -118,7 +176,7 @@ impl SubscriptionContract {
         }
         if plan_id != 0 {
             Self::check_plan(
-                &env,
+                env,
                 plan_id,
                 &merchant,
                 &token,
@@ -127,7 +185,7 @@ impl SubscriptionContract {
             )?;
         }
 
-        let id = storage::take_next_id(&env)?;
+        let id = storage::take_next_id(env)?;
         let now = env.ledger().sequence();
         let sub = Subscription {
             id,
@@ -143,16 +201,20 @@ impl SubscriptionContract {
             next_charge_ledger: now,
             status: SubStatus::Active,
             plan_id,
+            expires_at,
         };
-        storage::write_sub(&env, &sub);
-        storage::push_index(&env, DataKey::BySubscriber(sub.subscriber.clone()), id);
-        storage::push_index(&env, DataKey::ByMerchant(sub.merchant.clone()), id);
+        storage::write_sub(env, &sub);
+        storage::push_index(env, DataKey::BySubscriber(sub.subscriber.clone()), id);
+        storage::push_index(env, DataKey::ByMerchant(sub.merchant.clone()), id);
+        if plan_id != 0 {
+            storage::push_index(env, DataKey::ByPlan(plan_id), id);
+        }
 
         // After the write, so the new subscription's cap is included.
-        allowance::sync(&env, &sub.subscriber, &sub.token)?;
+        allowance::sync(env, &sub.subscriber, &sub.token)?;
 
-        if let Some(registry) = storage::read_registry(&env) {
-            let registered = RegistryClient::new(&env, &registry).try_register_subscription(
+        if let Some(registry) = storage::read_registry(env) {
+            let registered = RegistryClient::new(env, &registry).try_register_subscription(
                 &id,
                 &sub.subscriber,
                 &sub.merchant,
@@ -162,7 +224,7 @@ impl SubscriptionContract {
             }
         }
 
-        storage::bump_instance(&env);
+        storage::bump_instance(env);
         Subscribed {
             subscription_id: id,
             subscriber: sub.subscriber,
@@ -172,8 +234,9 @@ impl SubscriptionContract {
             interval_ledgers,
             total_cap,
             plan_id,
+            expires_at,
         }
-        .publish(&env);
+        .publish(env);
         Ok(id)
     }
 
@@ -204,8 +267,13 @@ impl SubscriptionContract {
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
         }
 
-        // INTERVAL.
+        // EXPIRY.
         let now = env.ledger().sequence();
+        if sub.expires_at != 0 && now > sub.expires_at {
+            return Err(Error::SubscriptionExpired);
+        }
+
+        // INTERVAL.
         if now < sub.next_charge_ledger {
             return Err(Error::IntervalNotElapsed);
         }
@@ -404,6 +472,9 @@ impl SubscriptionContract {
             return Ok(false);
         }
         let now = env.ledger().sequence();
+        if sub.expires_at != 0 && now > sub.expires_at {
+            return Ok(false);
+        }
         if now < sub.next_charge_ledger || now.checked_add(sub.interval_ledgers).is_none() {
             return Ok(false);
         }
@@ -433,6 +504,37 @@ impl SubscriptionContract {
     /// Every subscription payable to a merchant, oldest first.
     pub fn get_by_merchant(env: Env, merchant: Address) -> Result<Vec<Subscription>, Error> {
         Self::load_indexed(&env, &DataKey::ByMerchant(merchant))
+    }
+
+    /// Every subscription created against a plan, oldest first. Ad-hoc
+    /// subscriptions (`plan_id` 0) are never indexed, so 0 returns empty.
+    pub fn get_by_plan(env: Env, plan_id: u64) -> Result<Vec<Subscription>, Error> {
+        if plan_id == 0 {
+            return Ok(Vec::new(&env));
+        }
+        Self::load_indexed(&env, &DataKey::ByPlan(plan_id))
+    }
+
+    /// One page of a plan's subscriptions, oldest first. `start` is the
+    /// number of entries to skip; `limit` caps the page size.
+    pub fn get_by_plan_page(
+        env: Env,
+        plan_id: u64,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Subscription>, Error> {
+        if plan_id == 0 {
+            return Ok(Vec::new(&env));
+        }
+        Self::load_indexed_page(&env, &DataKey::ByPlan(plan_id), start, limit)
+    }
+
+    /// Number of subscriptions created against a plan. 0 for ad-hoc.
+    pub fn count_by_plan(env: Env, plan_id: u64) -> Result<u32, Error> {
+        if plan_id == 0 {
+            return Ok(0);
+        }
+        Ok(storage::read_index(&env, &DataKey::ByPlan(plan_id)).len())
     }
 
     // ---- internal helpers ----
@@ -510,6 +612,25 @@ impl SubscriptionContract {
         let mut out = Vec::new(env);
         for id in storage::read_index(env, key).iter() {
             out.push_back(storage::read_sub(env, id)?);
+        }
+        Ok(out)
+    }
+
+    fn load_indexed_page(
+        env: &Env,
+        key: &DataKey,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Subscription>, Error> {
+        let mut out = Vec::new(env);
+        let ids = storage::read_index(env, key);
+        let len = ids.len();
+        if start >= len || limit == 0 {
+            return Ok(out);
+        }
+        let end = start.saturating_add(limit).min(len);
+        for i in start..end {
+            out.push_back(storage::read_sub(env, ids.get_unchecked(i))?);
         }
         Ok(out)
     }
