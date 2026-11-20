@@ -32,6 +32,11 @@ pub enum DataKey {
     Registry,
 }
 
+// Note: `Plan.subscriber_count` is owned by the plan contract, not this one.
+// The subscription contract only triggers the increment (via the plan
+// contract client) on each `subscribe`; it does not persist a local counter,
+// so no `DataKey` variant is needed here.
+
 pub fn read_plan_contract(env: &Env) -> Option<Address> {
     env.storage().instance().get(&DataKey::PlanContract)
 }

@@ -23,11 +23,20 @@ pub struct Plan {
     pub default_cap: i128,     // suggestion, >= amount_per_period
     pub active: bool,
     pub created_at: u32,       // ledger sequence
+    pub description: Option<String>, // None or 1..=MAX_DESCRIPTION_LEN bytes
+    pub subscriber_count: u64, // incremented on each subscribe naming this plan
 }
 ```
 
 The subscription contract reads `Plan` across contracts and decodes it by
 field name, so **field names must not change**.
+
+`description` is optional free-form text (e.g. a human-readable summary of the
+plan). If provided it must be non-empty and at most `MAX_DESCRIPTION_LEN`
+(256) bytes; longer descriptions are rejected with `InvalidDescription`.
+`subscriber_count` starts at 0 and is incremented by the subscription contract
+on every successful `subscribe` that names this plan. It is a convenience
+counter only — it is not decremented on cancellation or expiry.
 
 ## Functions
 
@@ -35,12 +44,24 @@ field name, so **field names must not change**.
 |---|---|---|
 | `initialize(admin)` | admin | Once. |
 | `set_registry(admin, registry)` | admin | Once, before the first plan. |
-| `create_plan(merchant, name, token, amount_per_period, interval_ledgers, default_cap) -> u64` | **merchant** | Active immediately. Counted in the registry if linked. |
+| `create_plan(merchant, name, token, amount_per_period, interval_ledgers, default_cap, description) -> u64` | **merchant** | Active immediately. `description` is `Option<String>`; if `Some`, it must be 1..=`MAX_DESCRIPTION_LEN` bytes. Counted in the registry if linked. |
+| `set_plan_description(merchant, plan_id, description)` | **the plan's merchant** | Replaces the description (`None` clears it). Emits `plan_description_updated`. Same byte limit as `create_plan`. |
 | `deactivate_plan(merchant, plan_id)` | **the plan's merchant** | Irreversible. |
 | `get_plan(plan_id) -> Plan` | none | |
+| `get_plan_subscriber_count(plan_id) -> u64` | none | Returns `Plan.subscriber_count`; 0 for unknown plans. |
 | `get_plans_by_merchant(merchant) -> Vec<Plan>` | none | Active and inactive, oldest first. |
+| `get_plans_by_token(token, offset, limit) -> Vec<Plan>` | none | Oldest first. If `offset >= len`, returns an **empty vec** (not an error); see below. |
 | `get_active_plans() -> Vec<Plan>` | none | Oldest first. |
 | `get_registry() -> Option<Address>` | none | |
+
+### `get_plans_by_token` pagination
+
+`get_plans_by_token` returns at most `limit` plans starting at `offset`. An
+`offset` greater than or equal to the number of plans for that token is **not**
+an error: the call returns an empty `Vec`. Callers that need to distinguish
+"no plans exist for this token" from "offset is past the end" should first
+call `get_plans_by_merchant` (or an indexer) to learn the total count, or
+simply stop paging when an empty page is returned.
 
 ## What deactivation does and does not do
 
@@ -57,7 +78,8 @@ in the subscription crate's integration tests.
 
 | Event | Topics | Data |
 |---|---|---|
-| `plan_created` | plan_id, merchant | name, token, amount_per_period, interval_ledgers, default_cap |
+| `plan_created` | plan_id, merchant | name, token, amount_per_period, interval_ledgers, default_cap, description |
+| `plan_description_updated` | plan_id, merchant | description |
 | `plan_deactivated` | plan_id, merchant | — |
 
 ## Errors
@@ -77,10 +99,14 @@ in the subscription crate's integration tests.
 | 11 | `Overflow` | |
 | 12 | `AlreadyConfigured` | Registry already linked, or a plan already exists. |
 | 13 | `RegistryUpdateFailed` | The linked registry refused to count the plan. |
+| 15 | `InvalidDescription` | Description is empty or longer than `MAX_DESCRIPTION_LEN` (256) bytes. |
 
-Codes are append-only.
+Codes are append-only. (14 is reserved.)
 
 ## Limits
 
 `get_active_plans` walks every plan ever created. For large catalogues, serve
 listings from an indexer reading `plan_created` / `plan_deactivated` events.
+
+`MAX_DESCRIPTION_LEN` is **256 bytes**. Descriptions are stored as UTF-8 and
+the limit is measured in bytes, not characters.

@@ -21,6 +21,7 @@ fn create_plan(s: &Setup, plans: &PlanContractClient) -> u64 {
     plans.create_plan(
         &s.merchant,
         &String::from_str(&s.env, "Pro"),
+        &None,
         &s.token.address,
         &AMOUNT,
         &INTERVAL,
@@ -103,4 +104,38 @@ fn a_plan_with_no_subscriptions_counts_zero() {
     let unused = create_plan(&s, &plans);
     assert_eq!(s.client.count_by_plan(&unused), 0);
     assert!(s.client.get_by_plan_page(&unused, &0, &10).is_empty());
+}
+
+#[test]
+fn subscribing_increments_the_plan_subscriber_count() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+    let other = create_plan(&s, &plans);
+
+    assert_eq!(plans.get_plan_subscriber_count(&plan), 0);
+
+    subscribe_to(&s, plan);
+    assert_eq!(plans.get_plan_subscriber_count(&plan), 1);
+
+    subscribe_to(&s, plan);
+    subscribe_to(&s, plan);
+    assert_eq!(plans.get_plan_subscriber_count(&plan), 3);
+    assert_eq!(plans.get_plan_subscriber_count(&other), 0);
+
+    subscribe_to(&s, other);
+    assert_eq!(plans.get_plan_subscriber_count(&other), 1);
+    assert_eq!(plans.get_plan_subscriber_count(&plan), 3);
+}
+
+#[test]
+fn ad_hoc_subscriptions_do_not_affect_plan_subscriber_counts() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+    subscribe_to(&s, plan);
+
+    s.subscribe();
+    s.subscribe();
+
+    assert_eq!(plans.get_plan_subscriber_count(&plan), 1);
+    assert_eq!(plans.get_plan_subscriber_count(&0), 0);
 }

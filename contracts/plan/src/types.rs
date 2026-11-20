@@ -32,4 +32,7 @@ pub struct Plan {
     pub created_at: u32,
     /// Optional longer description of the plan.
     pub description: Option<String>,
+    /// Number of subscriptions created against this plan. Incremented by the
+    /// subscription contract on each successful subscribe with this plan ID.
+    pub subscriber_count: u64,
 }

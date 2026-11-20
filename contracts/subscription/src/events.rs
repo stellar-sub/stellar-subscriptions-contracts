@@ -101,3 +101,17 @@ pub struct MerchantEnded {
     pub merchant: Address,
     pub total_charged: i128,
 }
+
+/// A plan's description was set or updated.
+///
+/// Mirrors the plan contract's event so indexers can decode it from either
+/// contract. `description` is `None` when the description was cleared.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanDescriptionUpdated {
+    #[topic]
+    pub plan_id: u64,
+    #[topic]
+    pub merchant: Address,
+    pub description: Option<String>,
+}

@@ -97,6 +97,17 @@ pub fn write_plan(env: &Env, plan: &Plan) {
     bump_persistent(env, &key);
 }
 
+/// Increment a plan's `subscriber_count` and persist it.
+pub fn bump_subscriber_count(env: &Env, plan_id: u64) -> Result<u64, Error> {
+    let mut plan = read_plan(env, plan_id)?;
+    plan.subscriber_count = plan
+        .subscriber_count
+        .checked_add(1)
+        .ok_or(Error::Overflow)?;
+    write_plan(env, &plan);
+    Ok(plan.subscriber_count)
+}
+
 pub fn read_index(env: &Env, key: &DataKey) -> Vec<u64> {
     match env.storage().persistent().get(key) {
         Some(ids) => {

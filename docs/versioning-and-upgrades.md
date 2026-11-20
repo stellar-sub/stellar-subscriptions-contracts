@@ -33,7 +33,12 @@ deployed instance.
   `SubscriptionRecord`, ...) in a way that is not purely additive. Every
   value already written to persistent storage was encoded with the old
   shape; a non-additive change makes existing entries fail to decode the
-  next time they are read.
+  next time they are read. Purely additive changes are safe: adding
+  `subscriber_count: u64` to `Plan` (and populating the already-present
+  `description` field) leaves every previously stored `Plan` decodable,
+  because the new field is filled in with its `contracttype` default
+  (`0`) when an old entry is read. Any non-additive change to `Plan`
+  requires a fresh deployment.
 - **Changing a contract's code at its existing address.** None of these
   contracts implement an upgrade entry point (there is no
   `update_current_contract_wasm` call or similar in any `lib.rs`), so this is

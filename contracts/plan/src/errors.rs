@@ -1,5 +1,8 @@
 use soroban_sdk::contracterror;
 
+/// Maximum length, in bytes, of a plan description.
+pub const MAX_DESCRIPTION_LEN: u32 = 256;
+
 /// Codes are append-only: never renumber or reuse one.
 // `contracterror` generates an undocumentable associated function from this
 // enum; its own variants are still documented below.
@@ -36,4 +39,6 @@ pub enum Error {
     RegistryUpdateFailed = 13,
     /// `page_size` must be between 1 and 1000.
     InvalidPageSize = 14,
+    /// Description must be at most `MAX_DESCRIPTION_LEN` bytes.
+    InvalidDescription = 15,
 }

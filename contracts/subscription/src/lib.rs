@@ -162,6 +162,19 @@ impl SubscriptionContract {
             }
         }
 
+        // After all local state is written: bump the plan's subscriber count.
+        // A failure rolls back the whole call, so no half-created
+        // subscription is ever left behind.
+        if plan_id != 0 {
+            let plan_contract =
+                storage::read_plan_contract(&env).ok_or(Error::PlanContractNotSet)?;
+            let incremented =
+                PlanClient::new(&env, &plan_contract).try_increment_subscriber_count(&plan_id);
+            if !matches!(incremented, Ok(Ok(()))) {
+                return Err(Error::PlanNotFound);
+            }
+        }
+
         storage::bump_instance(&env);
         Subscribed {
             subscription_id: id,
