@@ -204,6 +204,38 @@ fn charges_accumulate_volume_by_their_increase() {
 }
 
 #[test]
+fn total_charged_volume_overflow_near_i128_max_is_rejected_and_leaves_state_unchanged() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+
+    // Bring total_charged_volume near i128::MAX across two subscriptions.
+    s.client
+        .update_subscription(&1, &(i128::MAX - 100), &STATUS_ACTIVE);
+    s.client.update_subscription(&2, &50, &STATUS_ACTIVE);
+
+    let stats_before = s.stats();
+    assert_eq!(stats_before.total_charged_volume, i128::MAX - 50);
+    assert_eq!(s.client.get_subscription_record(&2).total_charged, 50);
+
+    // Subscription 2 reports total_charged = 101 -> delta = 51.
+    // Adding 51 to (i128::MAX - 50) would push total_charged_volume past i128::MAX.
+    expect_err(
+        s.client.try_update_subscription(&2, &101, &STATUS_ACTIVE),
+        Error::Overflow,
+    );
+
+    // Stats and record.total_charged must remain unchanged after the failed update.
+    assert_eq!(s.stats(), stats_before);
+    assert_eq!(s.client.get_subscription_record(&2).total_charged, 50);
+    assert_eq!(s.client.get_subscription_record(&2).status, STATUS_ACTIVE);
+    assert_eq!(
+        s.client.get_subscription_record(&1).total_charged,
+        i128::MAX - 100
+    );
+}
+
+#[test]
 fn total_charged_can_never_decrease() {
     let s = Setup::new();
     s.register(1);
