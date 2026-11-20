@@ -8,7 +8,8 @@ use soroban_sdk::{
 };
 
 use crate::{
-    Error, Plan, PlanContract, PlanContractClient, PlanCreated, PlanDeactivated, MAX_NAME_LEN,
+    Error, Plan, PlanContract, PlanContractClient, PlanCreated, PlanDeactivated, PlanReactivated,
+    MAX_NAME_LEN, MAX_PAGE_SIZE,
 };
 
 const AMOUNT: i128 = 500;
@@ -263,11 +264,67 @@ fn deactivating_twice_is_rejected() {
 }
 
 #[test]
+fn the_merchant_can_reactivate_their_plan() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "Pro");
+    s.client.deactivate_plan(&s.merchant, &id);
+    assert!(!s.client.get_plan(&id).active);
+
+    s.client.reactivate_plan(&s.merchant, &id);
+    assert!(s.client.get_plan(&id).active);
+    assert_eq!(s.client.get_plan(&id).id, id);
+}
+
+#[test]
+fn another_merchant_cannot_reactivate_a_plan() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "Pro");
+    s.client.deactivate_plan(&s.merchant, &id);
+    let rival = Address::generate(&s.env);
+    expect_err(
+        s.client.try_reactivate_plan(&rival, &id),
+        Error::NotPlanMerchant,
+    );
+    assert!(!s.client.get_plan(&id).active);
+}
+
+#[test]
+fn reactivating_an_active_plan_is_rejected() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "Pro");
+    expect_err(
+        s.client.try_reactivate_plan(&s.merchant, &id),
+        Error::PlanAlreadyActive,
+    );
+    assert!(s.client.get_plan(&id).active);
+}
+
+#[test]
+fn reactivate_plan_emits_plan_reactivated() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "Pro");
+    s.client.deactivate_plan(&s.merchant, &id);
+    s.client.reactivate_plan(&s.merchant, &id);
+    let expected = PlanReactivated {
+        plan_id: id,
+        merchant: s.merchant.clone(),
+    };
+    assert_eq!(
+        s.env.events().all().filter_by_contract(&s.client.address),
+        [expected.to_xdr(&s.env, &s.client.address)]
+    );
+}
+
+#[test]
 fn unknown_plans_are_not_found() {
     let s = Setup::new();
     expect_err(s.client.try_get_plan(&9), Error::PlanNotFound);
     expect_err(
         s.client.try_deactivate_plan(&s.merchant, &9),
+        Error::PlanNotFound,
+    );
+    expect_err(
+        s.client.try_reactivate_plan(&s.merchant, &9),
         Error::PlanNotFound,
     );
 }
@@ -314,6 +371,28 @@ fn create_plan_emits_plan_created() {
         amount_per_period: AMOUNT,
         interval_ledgers: INTERVAL,
         default_cap: CAP,
+        created_at: 1_000,
+    };
+    assert_eq!(
+        s.env.events().all().filter_by_contract(&s.client.address),
+        [expected.to_xdr(&s.env, &s.client.address)]
+    );
+}
+
+#[test]
+fn plan_created_event_records_the_creation_ledger() {
+    let s = Setup::new();
+    s.env.ledger().set_sequence_number(4_242);
+    let id = s.create(&s.merchant, "Pro");
+    let expected = PlanCreated {
+        plan_id: id,
+        merchant: s.merchant.clone(),
+        name: s.name("Pro"),
+        token: s.token.clone(),
+        amount_per_period: AMOUNT,
+        interval_ledgers: INTERVAL,
+        default_cap: CAP,
+        created_at: 4_242,
     };
     assert_eq!(
         s.env.events().all().filter_by_contract(&s.client.address),
@@ -399,6 +478,83 @@ fn get_plan_count_ignores_plans_for_other_tokens() {
 
     assert_eq!(s.client.get_plan_count(&s.token), 1);
     assert_eq!(s.client.get_plan_count(&other_token), 1);
+}
+
+#[test]
+fn get_active_plans_page_returns_the_first_n_plans() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    let d = s.create(&s.merchant, "D");
+
+    assert_eq!(ids(s.client.get_active_plans_page(&0, &2)), [a, b]);
+    assert_eq!(ids(s.client.get_active_plans_page(&2, &2)), [c, d]);
+}
+
+#[test]
+fn get_active_plans_page_beyond_the_end_is_empty() {
+    let s = Setup::new();
+    s.create(&s.merchant, "A");
+    s.create(&s.merchant, "B");
+    let empty: std::vec::Vec<u64> = std::vec::Vec::new();
+    assert_eq!(ids(s.client.get_active_plans_page(&2, &2)), empty);
+    assert_eq!(ids(s.client.get_active_plans_page(&100, &2)), empty);
+}
+
+#[test]
+fn get_active_plans_page_rejects_an_invalid_limit() {
+    let s = Setup::new();
+    s.create(&s.merchant, "A");
+    expect_err(
+        s.client.try_get_active_plans_page(&0, &0),
+        Error::InvalidPageSize,
+    );
+    expect_err(
+        s.client
+            .try_get_active_plans_page(&0, &(MAX_PAGE_SIZE + 1)),
+        Error::InvalidPageSize,
+    );
+}
+
+#[test]
+fn get_active_plans_by_merchant_filters_out_deactivated_plans() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    let d = s.create(&s.merchant, "D");
+    let e = s.create(&s.merchant, "E");
+    s.client.deactivate_plan(&s.merchant, &b);
+    s.client.deactivate_plan(&s.merchant, &d);
+
+    assert_eq!(ids(s.client.get_active_plans_by_merchant(&s.merchant)), [a, c, e]);
+    assert_eq!(
+        ids(s.client.get_plans_by_merchant(&s.merchant)),
+        [a, b, c, d, e]
+    );
+}
+
+#[test]
+fn get_plans_by_merchant_page_returns_the_requested_slice() {
+    let s = Setup::new();
+    let a = s.create(&s.merchant, "A");
+    let b = s.create(&s.merchant, "B");
+    let c = s.create(&s.merchant, "C");
+    let d = s.create(&s.merchant, "D");
+    let e = s.create(&s.merchant, "E");
+    s.client.deactivate_plan(&s.merchant, &b);
+    s.client.deactivate_plan(&s.merchant, &d);
+
+    assert_eq!(ids(s.client.get_plans_by_merchant_page(&s.merchant, &0, &2)), [a, b]);
+    assert_eq!(ids(s.client.get_plans_by_merchant_page(&s.merchant, &2, &2)), [c, d]);
+    assert_eq!(ids(s.client.get_plans_by_merchant_page(&s.merchant, &4, &2)), [e]);
+    let empty: std::vec::Vec<u64> = std::vec::Vec::new();
+    assert_eq!(ids(s.client.get_plans_by_merchant_page(&s.merchant, &5, &2)), empty);
+    expect_err(
+        s.client.try_get_plans_by_merchant_page(&s.merchant, &0, &0),
+        Error::InvalidPageSize,
+    );
 }
 
 #[test]

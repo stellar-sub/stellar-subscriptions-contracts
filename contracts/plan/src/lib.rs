@@ -26,6 +26,9 @@ pub const VERSION: u32 = 1;
 /// Longest accepted plan name, in bytes.
 pub const MAX_NAME_LEN: u32 = 64;
 
+/// Largest page a paginated getter will return in one call.
+pub const MAX_PAGE_SIZE: u32 = 1000;
+
 /// The one registry call this contract makes.
 // `contractclient` generates an undocumentable companion client type from
 // this trait; the trait's own items are still documented below.
@@ -59,6 +62,22 @@ pub struct PlanCreated {
     pub interval_ledgers: u32,
     /// Suggested cap for subscribers.
     pub default_cap: i128,
+    /// Ledger sequence at which the plan was created.
+    pub created_at: u32,
+}
+
+/// A merchant re-enabled a deactivated plan.
+// See the `#[allow(missing_docs)]` note on `PlanCreated` above.
+#[allow(missing_docs)]
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanReactivated {
+    /// Id of the plan that was reactivated.
+    #[topic]
+    pub plan_id: u64,
+    /// Merchant who reactivated the plan.
+    #[topic]
+    pub merchant: Address,
 }
 
 /// A merchant withdrew a plan from new subscriptions.
@@ -185,6 +204,7 @@ impl PlanContract {
             amount_per_period,
             interval_ledgers,
             default_cap,
+            created_at: plan.created_at,
         }
         .publish(&env);
         Ok(id)
@@ -209,6 +229,25 @@ impl PlanContract {
         Ok(())
     }
 
+    /// Re-enable a deactivated plan so it accepts new subscriptions again.
+    /// Requires the signature of the merchant who created it.
+    pub fn reactivate_plan(env: Env, merchant: Address, plan_id: u64) -> Result<(), Error> {
+        merchant.require_auth();
+        let mut plan = storage::read_plan(&env, plan_id)?;
+        if plan.merchant != merchant {
+            return Err(Error::NotPlanMerchant);
+        }
+        if plan.active {
+            return Err(Error::PlanAlreadyActive);
+        }
+
+        plan.active = true;
+        storage::write_plan(&env, &plan);
+        storage::bump_instance(&env);
+        PlanReactivated { plan_id, merchant }.publish(&env);
+        Ok(())
+    }
+
     /// Look up a plan by id.
     pub fn get_plan(env: Env, plan_id: u64) -> Result<Plan, Error> {
         storage::read_plan(&env, plan_id)
@@ -224,6 +263,12 @@ impl PlanContract {
     }
 
     /// Every plan still accepting subscriptions, oldest first.
+    ///
+    /// # Deprecated
+    ///
+    /// Reads and filters every plan, which exceeds the per-transaction
+    /// instruction budget at scale. Use [`Self::get_active_plans_page`].
+    #[deprecated(note = "use get_active_plans_page to stay within the instruction budget")]
     pub fn get_active_plans(env: Env) -> Result<Vec<Plan>, Error> {
         let mut out = Vec::new(&env);
         for id in storage::read_index(&env, &DataKey::AllPlans).iter() {
@@ -231,6 +276,66 @@ impl PlanContract {
             if plan.active {
                 out.push_back(plan);
             }
+        }
+        Ok(out)
+    }
+
+    /// A bounded page of plans still accepting subscriptions, oldest first.
+    /// Scans `AllPlans` from `start` and returns at most `limit` active plans.
+    pub fn get_active_plans_page(
+        env: Env,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Plan>, Error> {
+        if limit == 0 || limit > MAX_PAGE_SIZE {
+            return Err(Error::InvalidPageSize);
+        }
+        let mut out = Vec::new(&env);
+        let ids = storage::read_index(&env, &DataKey::AllPlans);
+        let len = ids.len();
+        for i in start..len {
+            if out.len() >= limit {
+                break;
+            }
+            let plan = storage::read_plan(&env, ids.get(i).unwrap())?;
+            if plan.active {
+                out.push_back(plan);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Every active plan a merchant created, oldest first.
+    pub fn get_active_plans_by_merchant(
+        env: Env,
+        merchant: Address,
+    ) -> Result<Vec<Plan>, Error> {
+        let mut out = Vec::new(&env);
+        for id in storage::read_index(&env, &DataKey::ByMerchant(merchant)).iter() {
+            let plan = storage::read_plan(&env, id)?;
+            if plan.active {
+                out.push_back(plan);
+            }
+        }
+        Ok(out)
+    }
+
+    /// A bounded page of a merchant's plans, active or not, oldest first.
+    pub fn get_plans_by_merchant_page(
+        env: Env,
+        merchant: Address,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<Plan>, Error> {
+        if limit == 0 || limit > MAX_PAGE_SIZE {
+            return Err(Error::InvalidPageSize);
+        }
+        let mut out = Vec::new(&env);
+        let ids = storage::read_index(&env, &DataKey::ByMerchant(merchant));
+        let end = start.checked_add(limit).ok_or(Error::Overflow)?;
+        let len = ids.len();
+        for i in start..end.min(len) {
+            out.push_back(storage::read_plan(&env, ids.get(i).unwrap())?);
         }
         Ok(out)
     }

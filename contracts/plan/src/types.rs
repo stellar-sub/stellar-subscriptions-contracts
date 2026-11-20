@@ -33,3 +33,16 @@ pub struct Plan {
     /// Optional longer description of the plan.
     pub description: Option<String>,
 }
+
+/// Event emitted when a plan is created.
+#[allow(missing_docs)]
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlanCreated {
+    /// ID of the newly created plan.
+    pub plan_id: u64,
+    /// Merchant who created the plan.
+    pub merchant: Address,
+    /// Ledger sequence at which the plan was created.
+    pub created_at: u32,
+}
