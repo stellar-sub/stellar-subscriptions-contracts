@@ -39,8 +39,12 @@ previous step:
 
 1. **`create-plan.sh`** — `demo-owner` creates a subscription plan (price,
    interval, trial). Prints the expected plan ID and terms.
-2. **`subscribe.sh`** — `demo-sub` subscribes to the plan created in step 1.
-   Prints the expected subscription state and next charge time.
+2. **`subscribe.sh`** — `demo-sub` subscribes to the plan created in step 1
+   using `subscribe_simple`, the zero-trial wrapper around `subscribe`.
+   Prints the expected subscription state and next charge time. Callers that
+   need a trial must call `subscribe` directly with an explicit
+   `trial_ledgers` argument (the ABI-breaking change is documented in
+   `CHANGELOG.md`).
 3. **`charge.sh`** — `demo-owner` charges the subscription for one interval.
    Prints the expected amount moved and the new next-charge time.
 4. **`pause.sh`** — `demo-sub` pauses the subscription. Prints the expected

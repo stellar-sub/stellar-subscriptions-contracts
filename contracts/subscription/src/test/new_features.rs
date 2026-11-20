@@ -254,6 +254,63 @@ fn invariant_trial_with_cap() {
 }
 
 #[test]
+fn subscribe_simple_matches_subscribe_with_zero_trial() {
+    let s = Setup::new();
+
+    // Subscribe via the backward-compatible overload (no trial parameter).
+    let simple_id = s.client.subscribe_simple(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+    );
+
+    // Subscribe via the full signature with trial_ledgers = 0.
+    let full_id = s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+        &0,
+    );
+
+    let simple_sub = s.client.get_subscription(&simple_id);
+    let full_sub = s.client.get_subscription(&full_id);
+
+    // Both records must be identical.
+    assert_eq!(simple_sub.trial_ledgers, 0);
+    assert_eq!(simple_sub.trial_ledgers, full_sub.trial_ledgers);
+    assert_eq!(simple_sub.next_charge_ledger, s.ledger());
+    assert_eq!(simple_sub.next_charge_ledger, full_sub.next_charge_ledger);
+    assert_eq!(simple_sub.status, SubStatus::Active);
+    assert_eq!(simple_sub.status, full_sub.status);
+    assert_eq!(simple_sub.amount, full_sub.amount);
+    assert_eq!(simple_sub.interval_ledgers, full_sub.interval_ledgers);
+    assert_eq!(simple_sub.total_cap, full_sub.total_cap);
+    assert_eq!(simple_sub.total_charged, full_sub.total_charged);
+    assert_eq!(simple_sub.plan_id, full_sub.plan_id);
+
+    // Both subscriptions are immediately chargeable.
+    assert!(s.client.is_chargeable(&simple_id));
+    assert!(s.client.is_chargeable(&full_id));
+
+    // Charging the simple subscription behaves like the full one.
+    s.client.charge(&s.merchant, &simple_id);
+    s.client.charge(&s.merchant, &full_id);
+    let simple_sub = s.client.get_subscription(&simple_id);
+    let full_sub = s.client.get_subscription(&full_id);
+    assert_eq!(simple_sub.total_charged, AMOUNT);
+    assert_eq!(simple_sub.total_charged, full_sub.total_charged);
+    assert_eq!(simple_sub.next_charge_ledger, full_sub.next_charge_ledger);
+}
+
+#[test]
 fn invariant_merchant_end_with_multiple_subscriptions() {
     // Verify merchant_end affects only one subscription.
     let s = Setup::new();

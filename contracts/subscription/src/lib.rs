@@ -82,6 +82,35 @@ impl SubscriptionContract {
         storage::read_registry(&env)
     }
 
+    /// Backward-compatible entry point for callers that do not need trials.
+    ///
+    /// Delegates to [`subscribe`](Self::subscribe) with `trial_ledgers = 0`,
+    /// so the first charge is available immediately. Use this from scripts or
+    /// clients compiled against the pre-trial ABI.
+    #[allow(clippy::too_many_arguments)]
+    pub fn subscribe_simple(
+        env: Env,
+        subscriber: Address,
+        merchant: Address,
+        token: Address,
+        amount_per_period: i128,
+        interval_ledgers: u32,
+        total_cap: i128,
+        plan_id: u64,
+    ) -> Result<u64, Error> {
+        Self::subscribe(
+            env,
+            subscriber,
+            merchant,
+            token,
+            amount_per_period,
+            interval_ledgers,
+            total_cap,
+            plan_id,
+            0,
+        )
+    }
+
     /// Subscriber authorizes a subscription. This is where consent is granted
     /// and bounded: the merchant may later pull `amount_per_period` once per
     /// `interval_ledgers`, never more than `total_cap` in total.
@@ -192,16 +221,19 @@ impl SubscriptionContract {
     pub fn charge(env: Env, merchant: Address, subscription_id: u64) -> Result<(), Error> {
         merchant.require_auth();
         let mut sub = storage::read_sub(&env, subscription_id)?;
-        if sub.merchant != merchant {
-            return Err(Error::NotMerchant);
-        }
 
-        // REVOCATION.
+        // REVOCATION first, so an unrelated caller cannot learn whether a
+        // subscription exists by comparing NotMerchant against a status error.
         match sub.status {
             SubStatus::Active => {}
             SubStatus::Paused => return Err(Error::SubscriptionPaused),
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+            SubStatus::MerchantEnded => return Err(Error::SubscriptionMerchantEnded),
+        }
+
+        if sub.merchant != merchant {
+            return Err(Error::NotMerchant);
         }
 
         // INTERVAL.
@@ -274,6 +306,30 @@ impl SubscriptionContract {
             Self::charge(env.clone(), merchant.clone(), id)?;
         }
         Ok(())
+    }
+
+    /// Charge as many of the merchant's subscriptions as possible, collecting
+    /// per-id results instead of aborting on the first failure.
+    ///
+    /// Each id is charged independently through the full `charge` checks; a
+    /// failed charge records its error in the returned vector and does not
+    /// roll back the others. The result vector is positionally aligned with
+    /// `ids`. At most `MAX_BATCH` ids are accepted; a larger batch returns a
+    /// single `Err(BatchTooLarge)` and charges nothing.
+    pub fn batch_charge_soft(
+        env: Env,
+        merchant: Address,
+        ids: Vec<u64>,
+    ) -> Vec<Result<(), Error>> {
+        let mut results = Vec::new(&env);
+        if ids.len() > MAX_BATCH {
+            results.push_back(Err(Error::BatchTooLarge));
+            return results;
+        }
+        for id in ids.iter() {
+            results.push_back(Self::charge(env.clone(), merchant.clone(), id));
+        }
+        results
     }
 
     /// Subscriber cancels. Final: no further charge will ever succeed.

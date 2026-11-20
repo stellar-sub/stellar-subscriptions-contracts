@@ -5,7 +5,23 @@ discriminants are append-only and never renumbered.
 
 ## Unreleased
 
+### Changed
+- **ABI break:** `subscribe` now takes a required `trial_ledgers: u32`
+  argument. Callers compiled against the old signature (testnet scripts, CLI
+  examples) must be rebuilt or they fail with a decode error.
+  **Migration:** callers that don't need a trial should either call the new
+  `subscribe_simple(env, subscriber, merchant, token, amount_per_period,
+  interval_ledgers, total_cap, plan_id)` overload, which forwards to
+  `subscribe` with `trial_ledgers = 0`, or pass `trial_ledgers = 0`
+  explicitly to `subscribe`.
+
 ### Added
+- `subscribe_simple`: convenience overload of `subscribe` with no trial
+  period, for backward-compatible callers.
+- `batch_charge_soft`: charges many subscriptions in one call, skipping
+  entries that fail instead of aborting the whole batch.
+- Registry status `STATUS_MERCHANT_ENDED` for plans whose merchant has
+  ended billing.
 - `scripts/verify-testnet.sh` and `make verify`: prove CAP, INTERVAL and
   REVOCATION against a live deployment. 20 of 20 checks pass on Testnet;
   see [DEPLOYMENTS.md](DEPLOYMENTS.md).

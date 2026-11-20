@@ -9,7 +9,7 @@ use soroban_sdk::{
 
 use crate::{
     Error, RegistryContract, RegistryContractClient, RegistryStats, SubscriptionRecord,
-    STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
+    STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_MERCHANT_ENDED, STATUS_PAUSED,
 };
 
 struct Setup {
@@ -263,11 +263,39 @@ fn final_subscriptions_never_change_again() {
 }
 
 #[test]
+fn merchant_ended_subscriptions_never_change_again() {
+    let s = Setup::new();
+    s.register(1);
+    s.client
+        .update_subscription(&1, &100, &STATUS_MERCHANT_ENDED);
+    assert_eq!(
+        s.client.get_subscription_record(&1).status,
+        STATUS_MERCHANT_ENDED
+    );
+
+    expect_err(
+        s.client.try_update_subscription(&1, &100, &STATUS_ACTIVE),
+        Error::AlreadyFinal,
+    );
+    expect_err(
+        s.client
+            .try_update_subscription(&1, &500, &STATUS_MERCHANT_ENDED),
+        Error::AlreadyFinal,
+    );
+    assert_eq!(s.stats().total_charged_volume, 100);
+}
+
+#[test]
+fn merchant_ended_is_final() {
+    assert!(RegistryContract::is_final(STATUS_MERCHANT_ENDED));
+}
+
+#[test]
 fn unknown_status_codes_are_rejected() {
     let s = Setup::new();
     s.register(1);
     expect_err(
-        s.client.try_update_subscription(&1, &0, &4),
+        s.client.try_update_subscription(&1, &0, &5),
         Error::InvalidStatus,
     );
 }

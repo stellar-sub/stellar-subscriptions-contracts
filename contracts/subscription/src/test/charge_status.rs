@@ -63,3 +63,15 @@ fn cap_would_be_exceeded_is_reported_before_a_charge_is_tried() {
 
     assert_agrees(&s, id, ChargeStatus::CapWouldBeExceeded);
 }
+
+#[test]
+fn merchant_ended_is_reported_before_the_merchant_identity_check() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.merchant_end(&s.merchant, &id);
+
+    // An unrelated caller must learn the subscription ended, not that they
+    // are not its merchant: reporting NotMerchant would leak its existence.
+    let err = s.client.try_charge(&s.subscriber, &id).unwrap_err();
+    assert_eq!(err, crate::Error::SubscriptionMerchantEnded);
+}

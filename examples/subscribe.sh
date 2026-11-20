@@ -7,9 +7,10 @@
 #
 # What this script expects to happen:
 #   1. It loads the demo identities and contract IDs from examples/env.sh.
-#   2. It calls `subscribe` on the subscription contract, passing the plan id
-#      created by create-plan.sh, the demo subscriber identity, and the plan's
-#      interval/token configuration.
+#   2. It calls `subscribe_simple` on the subscription contract, passing the
+#      plan id created by create-plan.sh, the demo subscriber identity, and the
+#      plan's interval/token configuration. `subscribe_simple` is the
+#      backward-compatible overload that defaults `trial_ledgers` to 0.
 #   3. On success the contract returns a new subscription id. The script prints
 #      that id so you can use it with charge.sh, pause.sh and cancel.sh.
 #
@@ -67,7 +68,7 @@ EOF
 # Invoke the contract
 # ---------------------------------------------------------------------------
 
-echo "==> calling subscribe..."
+echo "==> calling subscribe_simple..."
 
 SUBSCRIBE_OUTPUT="$(
   stellar contract invoke \
@@ -77,16 +78,21 @@ SUBSCRIBE_OUTPUT="$(
     --rpc-url "${RPC_URL}" \
     --network-passphrase "${NETWORK_PASSPHRASE}" \
     -- \
-    subscribe \
-      --plan_id "${PLAN_ID}" \
-      --subscriber "${SUBSCRIBER_IDENTITY}"
+    subscribe_simple \
+      --subscriber "${SUBSCRIBER_IDENTITY}" \
+      --merchant "${MERCHANT_IDENTITY}" \
+      --token "${TOKEN_CONTRACT_ID}" \
+      --amount_per_period "${AMOUNT_PER_PERIOD}" \
+      --interval_ledgers "${INTERVAL_LEDGERS}" \
+      --total_cap "${TOTAL_CAP}" \
+      --plan_id "${PLAN_ID}"
 )"
 
 # The invoke command prints the returned subscription id (a u64) on stdout.
 SUBSCRIPTION_ID="$(echo "${SUBSCRIBE_OUTPUT}" | tail -n 1 | tr -d '[:space:]')"
 
 if [[ -z "${SUBSCRIPTION_ID}" ]]; then
-  echo "error: subscribe did not return a subscription id." >&2
+  echo "error: subscribe_simple did not return a subscription id." >&2
   echo "       raw output: ${SUBSCRIBE_OUTPUT}" >&2
   exit 1
 fi
@@ -97,7 +103,7 @@ fi
 
 cat <<EOF
 
-==> subscribe succeeded
+==> subscribe_simple succeeded
     new subscription id: ${SUBSCRIPTION_ID}
 
     Next steps:
