@@ -33,6 +33,18 @@ fn merchant_pages_are_contiguous_and_capped_at_the_limit() {
 }
 
 #[test]
+fn merchant_page_with_zero_limit_returns_empty() {
+    let s = Setup::new();
+    for _ in 0..3 {
+        s.subscribe();
+    }
+    // A zero limit is a valid request that yields no entries, regardless of offset.
+    assert!(s.client.get_by_merchant_page(&s.merchant, &0, &0).is_empty());
+    assert!(s.client.get_by_merchant_page(&s.merchant, &1, &0).is_empty());
+    assert!(s.client.get_by_merchant_page(&s.merchant, &3, &0).is_empty());
+}
+
+#[test]
 fn counts_match_the_listings_and_a_party_with_none_counts_zero() {
     let s = Setup::new();
     let stranger = Address::generate(&s.env);

@@ -136,17 +136,56 @@ fn merchant_end_can_only_be_called_by_merchant() {
 }
 
 #[test]
-fn merchant_end_fails_on_already_final_subscription() {
+fn merchant_end_fails_on_cancelled_subscription() {
     let s = Setup::new();
     let id = s.subscribe();
 
     // Cancel the subscription.
     s.client.cancel(&s.subscriber, &id);
+    assert_eq!(s.client.get_subscription(&id).status, SubStatus::Cancelled);
 
     // Merchant cannot end a cancelled subscription.
     expect_err(
         s.client.try_merchant_end(&s.merchant, &id),
         Error::SubscriptionCancelled,
+    );
+}
+
+#[test]
+fn merchant_end_fails_on_exhausted_subscription() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Charge until the cap is reached, exhausting the subscription.
+    while s.client.is_chargeable(&id) {
+        s.client.charge(&s.merchant, &id);
+        s.advance(INTERVAL);
+    }
+    assert_eq!(s.client.get_subscription(&id).status, SubStatus::Exhausted);
+
+    // Merchant cannot end an exhausted subscription.
+    expect_err(
+        s.client.try_merchant_end(&s.merchant, &id),
+        Error::SubscriptionExhausted,
+    );
+}
+
+#[test]
+fn merchant_end_fails_on_already_merchant_ended_subscription() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Merchant ends the subscription.
+    s.client.merchant_end(&s.merchant, &id);
+    assert_eq!(
+        s.client.get_subscription(&id).status,
+        SubStatus::MerchantEnded
+    );
+
+    // Merchant cannot end an already merchant-ended subscription.
+    expect_err(
+        s.client.try_merchant_end(&s.merchant, &id),
+        Error::SubscriptionMerchantEnded,
     );
 }
 

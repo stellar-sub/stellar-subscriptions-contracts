@@ -264,3 +264,51 @@ fn get_allowance_status_with_multiple_subscriptions() {
     let (outstanding, _) = s.client.get_allowance_status(&s.subscriber, &s.token.address);
     assert_eq!(outstanding, 2 * CAP);
 }
+
+#[test]
+fn paginated_views_return_empty_for_zero_limit() {
+    let s = Setup::new();
+    let other_merchant = Address::generate(&s.env);
+
+    // Populate so the listings are non-empty at a positive limit.
+    let a = s.subscribe();
+    let b = s.client.subscribe(
+        &s.subscriber,
+        &other_merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+        &0,
+    );
+
+    // Sanity check: a positive limit returns entries.
+    assert_eq!(s.client.get_by_subscriber_page(&s.subscriber, &0, &10).len(), 2);
+    assert_eq!(s.client.get_by_merchant_page(&s.merchant, &0, &10).len(), 1);
+    assert_eq!(
+        s.client.get_by_merchant_page(&other_merchant, &0, &10).len(),
+        1
+    );
+
+    // Policy: limit = 0 yields an empty vector, never an error.
+    assert_eq!(s.client.get_by_subscriber_page(&s.subscriber, &0, &0).len(), 0);
+    assert_eq!(s.client.get_by_merchant_page(&s.merchant, &0, &0).len(), 0);
+    assert_eq!(
+        s.client.get_by_merchant_page(&other_merchant, &0, &0).len(),
+        0
+    );
+
+    // The zero-limit result is empty regardless of the offset.
+    assert_eq!(s.client.get_by_subscriber_page(&s.subscriber, &1, &0).len(), 0);
+    assert_eq!(s.client.get_by_merchant_page(&s.merchant, &1, &0).len(), 0);
+
+    // A zero limit on an empty listing is likewise empty.
+    let stranger = Address::generate(&s.env);
+    assert_eq!(s.client.get_by_subscriber_page(&stranger, &0, &0).len(), 0);
+    assert_eq!(s.client.get_by_merchant_page(&stranger, &0, &0).len(), 0);
+
+    // The subscriptions are untouched by the zero-limit queries.
+    assert_eq!(s.client.get_by_subscriber(&s.subscriber).len(), 2);
+    let _ = (a, b);
+}

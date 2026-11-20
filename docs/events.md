@@ -31,6 +31,8 @@ Emitted when a subscriber creates a new subscription.
 | data 2 | interval_ledgers | `u32` | e.g. `720` |
 | data 3 | total_cap | `i128` | e.g. `120000000` |
 | data 4 | plan_id | `u64` | `0` for ad-hoc, non-zero for plan-based |
+| data 5 | trial_ledgers | `u32` | number of ledgers in the trial period, e.g. `0` for no trial |
+| data 6 | expires_at | `u32` | ledger sequence at which the subscription expires |
 
 **When emitted:** at the end of a successful `subscribe()` call, after the
 token allowance is approved and the registry is updated.
@@ -53,7 +55,9 @@ token allowance is approved and the registry is updated.
     10000000,
     720,
     120000000,
-    1
+    1,
+    0,
+    4693712
   ]
 }
 ```

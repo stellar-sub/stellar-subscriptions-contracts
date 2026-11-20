@@ -32,6 +32,41 @@ fn subscribe_emits_subscribed() {
             interval_ledgers: INTERVAL,
             total_cap: CAP,
             plan_id: 0,
+            trial_ledgers: 0,
+            expires_at: 0,
+        },
+    );
+}
+
+#[test]
+fn subscribe_with_trial_emits_trial_and_expiry() {
+    let s = Setup::new();
+    let trial = 10u32;
+    let now = s.ledger();
+    let id = s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+        &trial,
+        &0,
+    );
+    assert_only_event(
+        &s,
+        Subscribed {
+            subscription_id: id,
+            subscriber: s.subscriber.clone(),
+            merchant: s.merchant.clone(),
+            token: s.token.address.clone(),
+            amount_per_period: AMOUNT,
+            interval_ledgers: INTERVAL,
+            total_cap: CAP,
+            plan_id: 0,
+            trial_ledgers: trial,
+            expires_at: now + trial,
         },
     );
 }
