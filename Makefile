@@ -1,7 +1,8 @@
-.PHONY: build wasm wasm-size test clippy fmt fmt-check check clean deploy verify
+.PHONY: build wasm wasm-size test clippy fmt fmt-check check clean deploy verify testnet-deploy testnet-integration
 
 NETWORK ?= testnet
 IDENTITY ?= subs-deployer
+DEMO ?= 1
 
 # Build all contracts to wasm with the Stellar CLI.
 build:
@@ -41,7 +42,17 @@ clean:
 deploy:
 	NETWORK=$(NETWORK) IDENTITY=$(IDENTITY) ./scripts/deploy.sh
 
+# Deploy, initialize, wire all three contracts on Testnet with sensible defaults
+# (seeds the demo plan, identities and subscription so verification can run).
+testnet-deploy:
+	NETWORK=$(NETWORK) IDENTITY=$(IDENTITY) DEMO=$(DEMO) ./scripts/deploy.sh
+
 # Prove CAP, INTERVAL and REVOCATION against the live deployment
 # (run `DEMO=1 make deploy` first).
 verify:
 	NETWORK=$(NETWORK) ./scripts/verify-testnet.sh
+
+# Load the shared Testnet environment (examples/env.sh) and run live invariant
+# verification (scripts/verify-testnet.sh) against the deployed contracts.
+testnet-integration:
+	NETWORK=$(NETWORK) bash -c 'source ./examples/env.sh && ./scripts/verify-testnet.sh'

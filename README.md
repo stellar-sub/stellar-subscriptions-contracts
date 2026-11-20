@@ -13,6 +13,7 @@ authorized** and **never after the subscriber cancels**.
 - [The security model](#the-security-model)
 - [Contracts](#contracts)
 - [Quick start](#quick-start)
+- [Testnet](#testnet)
 - [Layout](#layout)
 - [Deployments](#deployments)
 - [Sister repositories](#sister-repositories)
@@ -32,8 +33,8 @@ authorized** and **never after the subscriber cancels**.
 
 3. **Verify on Testnet:**
 ```bash
-   DEMO=1 make deploy
-   make verify
+   make testnet-deploy
+   make testnet-integration
 ```
 
 **Next:** See [CONTRIBUTING.md](CONTRIBUTING.md) to add features without weakening the invariants.
@@ -83,11 +84,40 @@ else.
 
 ```bash
 # Prerequisites: Rust (pinned by rust-toolchain.toml) and the stellar CLI
-make test        # every contract's test suite, including the invariant tests
-make build       # wasm via stellar contract build
-make check       # everything CI runs: test, clippy, fmt, wasm build
-make deploy      # deploy + initialize + link on Testnet
+make test                 # every contract's test suite, including the invariant tests
+make build                # wasm via stellar contract build
+make check                # everything CI runs: test, clippy, fmt, wasm build
+make deploy               # deploy + initialize + link on Testnet
+make testnet-deploy       # deploy on Testnet with DEMO=1 defaults
+make testnet-integration  # source examples/env.sh and verify invariants on Testnet
 ```
+
+## Testnet
+
+Two convenience `make` targets wrap the end-to-end Testnet deployment and live
+invariant verification workflow:
+
+- **`make testnet-deploy`** — runs [`scripts/deploy.sh`](scripts/deploy.sh) with
+  sensible Testnet defaults (`NETWORK=testnet`, `IDENTITY=subs-deployer`,
+  `DEMO=1`). It builds the contracts, deploys and initializes `plan`, `registry`,
+  and `subscription`, performs the one-shot contract linking, seeds the demo
+  identities/plan/subscription, and writes the deployment variables to
+  `.deployments/testnet.env`.
+  ```bash
+  make testnet-deploy
+  # Override defaults if needed:
+  make testnet-deploy NETWORK=testnet IDENTITY=my-deployer DEMO=1
+  ```
+
+- **`make testnet-integration`** — sources [`examples/env.sh`](examples/env.sh)
+  to load and validate the deployed contract IDs and demo identities from
+  `.deployments/<network>.env`, then invokes
+  [`scripts/verify-testnet.sh`](scripts/verify-testnet.sh) to prove the `CAP`,
+  `INTERVAL`, and `REVOCATION` invariants on-chain against the live Testnet
+  deployment.
+  ```bash
+  make testnet-integration
+  ```
 
 ## Layout
 
