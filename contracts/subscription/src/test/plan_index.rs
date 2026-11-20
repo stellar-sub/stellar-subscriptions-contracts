@@ -104,3 +104,44 @@ fn a_plan_with_no_subscriptions_counts_zero() {
     assert_eq!(s.client.count_by_plan(&unused), 0);
     assert!(s.client.get_by_plan_page(&unused, &0, &10).is_empty());
 }
+
+#[test]
+fn cancelling_removes_the_subscription_from_its_plan_index() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+    let cancelled = subscribe_to(&s, plan);
+    let active = subscribe_to(&s, plan);
+    assert_eq!(s.client.count_by_plan(&plan), 2);
+
+    s.client.cancel(&s.subscriber, &cancelled);
+
+    assert_eq!(s.client.count_by_plan(&plan), 1);
+    let listed: std::vec::Vec<u64> = s
+        .client
+        .get_by_plan_page(&plan, &0, &10)
+        .iter()
+        .map(|sub| sub.id)
+        .collect();
+    assert_eq!(listed, std::vec![active]);
+}
+
+#[test]
+fn cancelling_an_ad_hoc_subscription_leaves_plan_indexes_untouched() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+    let indexed = subscribe_to(&s, plan);
+    let ad_hoc = s.subscribe();
+
+    s.client.cancel(&s.subscriber, &ad_hoc);
+
+    assert_eq!(s.client.count_by_plan(&0), 0);
+    assert!(s.client.get_by_plan_page(&0, &0, &10).is_empty());
+    assert_eq!(s.client.count_by_plan(&plan), 1);
+    let listed: std::vec::Vec<u64> = s
+        .client
+        .get_by_plan_page(&plan, &0, &10)
+        .iter()
+        .map(|sub| sub.id)
+        .collect();
+    assert_eq!(listed, std::vec![indexed]);
+}

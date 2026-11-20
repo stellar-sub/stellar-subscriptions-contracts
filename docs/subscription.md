@@ -87,6 +87,54 @@ A cap that is not a whole number of periods is allowed: with `amount = 100`
 and `cap = 250`, two charges succeed and the third is rejected with
 `CapExceeded`. The subscription stays `Active` with 50 unchargeable.
 
+## Expiry
+
+A subscription may carry an `expires_at` ledger. It is **inclusive**: a charge
+is allowed at exactly `expires_at` and rejected from `expires_at + 1` onward.
+`is_chargeable` follows the same rule, so the two never disagree.
+
+Once the expiry has passed, `charge` returns `SubscriptionExpired` and
+`is_chargeable` returns `false`; nothing else about the subscription changes.
+
+### Expiry and trials
+
+A trial (`trial_ledgers`) delays the first charge by pushing
+`next_charge_ledger` forward at `subscribe`. The trial and the expiry are
+independent, and the contract does not adjust one for the other. If the trial
+extends **past** `expires_at`, there is no ledger at which the first charge is
+both due and unexpired:
+
+- `is_chargeable` returns `false`;
+- `charge` returns `SubscriptionExpired` (the expiry check runs before the
+  interval check, so the error is `SubscriptionExpired`, not
+  `IntervalNotElapsed`).
+
+The subscription is not broken — it simply never becomes chargeable. A
+subscriber who wants a trial must choose `expires_at` at least
+`trial_ledgers` beyond the current ledger, or the merchant must charge before
+the trial ends (which the interval check forbids). If the trial ends **before**
+`expires_at`, the first charge works normally and later charges fail with
+`SubscriptionExpired` once the expiry passes.
+
+## Charge status
+
+`charge_status(subscription_id)` reports what a `charge` call would do right
+now, without changing state:
+
+| Status | Meaning |
+|---|---|
+| `Chargeable` | A charge would succeed. |
+| `TooEarly` | `now < next_charge_ledger` (`IntervalNotElapsed`). |
+| `Paused` | Status is `Paused` (`SubscriptionPaused`). |
+| `Cancelled` | Status is `Cancelled` (`SubscriptionCancelled`). |
+| `Exhausted` | Status is `Exhausted` (`SubscriptionExhausted`). |
+| `CapWouldBeExceeded` | The next charge would exceed `total_cap` (`CapExceeded`). |
+| `Expired` | `now > expires_at` (`SubscriptionExpired`). |
+| `MerchantEnded` | The merchant has ended the subscription (`SubscriptionMerchantEnded`). |
+
+The statuses are checked in the same order as `charge()`, so the reported
+status always matches the error a `charge` call would return.
+
 ## Pause and resume
 
 Pausing blocks charges and changes nothing else. Resuming sets
@@ -141,6 +189,12 @@ chooses their own `total_cap`.
 The plan is checked only at `subscribe`. Deactivating a plan afterwards has no
 effect on existing subscriptions — what the subscriber authorized governs.
 
+Subscriptions created from a plan are indexed under `DataKey::ByPlan(plan_id)`.
+**Cancelling a subscription removes its id from that index**, so
+`get_by_plan`, `get_by_plan_page` and `count_by_plan` list only non-cancelled
+plan subscriptions. Callers that need the full history (including cancelled
+subscriptions) should read the `cancelled` events or the registry instead.
+
 ## Registry
 
 If a registry is linked, `subscribe` registers the subscription and `charge`,
@@ -191,6 +245,8 @@ A rejected call emits nothing.
 | 24 | `AlreadyConfigured` | A link was already set, or a subscription already exists. |
 | 25 | `PlanContractNotSet` | Non-zero `plan_id` with no plan contract linked. |
 | 26 | `RegistryUpdateFailed` | |
+| 27 | `SubscriptionExpired` | `now > expires_at`. |
+| 28 | `SubscriptionMerchantEnded` | The merchant ended the subscription. |
 
 Codes are append-only.
 

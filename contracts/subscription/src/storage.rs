@@ -126,6 +126,29 @@ pub fn push_index(env: &Env, key: DataKey, id: u64) {
     bump_persistent(env, &key);
 }
 
+/// Remove the first occurrence of `id` from the index stored at `key`.
+///
+/// Rebuilds the vector without the matching element and writes it back. If the
+/// id is not present the index is left unchanged (aside from the TTL bump from
+/// the read). Used by `cancel` to drop an id from `DataKey::ByPlan(plan_id)`.
+pub fn remove_index_value(env: &Env, key: &DataKey, id: u64) {
+    let ids = read_index(env, key);
+    let mut kept: Vec<u64> = Vec::new(env);
+    let mut removed = false;
+    for existing in ids.iter() {
+        if !removed && existing == id {
+            removed = true;
+            continue;
+        }
+        kept.push_back(existing);
+    }
+    if !removed {
+        return;
+    }
+    env.storage().persistent().set(key, &kept);
+    bump_persistent(env, key);
+}
+
 #[cfg(test)]
 mod golden {
     // Storage-layout golden for `DataKey`.
@@ -162,6 +185,7 @@ mod golden {
             DataKey::Sub(_) => {}
             DataKey::BySubscriber(_) => {}
             DataKey::ByMerchant(_) => {}
+            DataKey::ByPlan(_) => {}
             DataKey::PlanContract => {}
             DataKey::Registry => {}
         }
@@ -172,12 +196,13 @@ mod golden {
         let env = Env::default();
         let addr = Address::generate(&env);
 
-        let cases: [(&str, DataKey); 7] = [
+        let cases: [(&str, DataKey); 8] = [
             ("Admin", DataKey::Admin),
             ("NextId", DataKey::NextId),
             ("Sub", DataKey::Sub(7)),
             ("BySubscriber", DataKey::BySubscriber(addr.clone())),
             ("ByMerchant", DataKey::ByMerchant(addr)),
+            ("ByPlan", DataKey::ByPlan(7)),
             ("PlanContract", DataKey::PlanContract),
             ("Registry", DataKey::Registry),
         ];
@@ -205,11 +230,11 @@ mod golden {
                 DataKey::Admin | DataKey::NextId | DataKey::PlanContract | DataKey::Registry => {
                     assert_eq!(vec.len(), 1, "unit variant {name} gained a payload");
                 }
-                DataKey::Sub(_) => {
-                    assert_eq!(vec.len(), 2, "Sub must carry one value");
+                DataKey::Sub(_) | DataKey::ByPlan(_) => {
+                    assert_eq!(vec.len(), 2, "{name} must carry one value");
                     assert!(
                         matches!(vec[1], ScVal::U64(_)),
-                        "Sub payload must be U64"
+                        "{name} payload must be U64"
                     );
                 }
                 DataKey::BySubscriber(_) | DataKey::ByMerchant(_) => {

@@ -13,7 +13,7 @@ mod storage;
 mod types;
 
 pub use errors::Error;
-pub use types::{SubStatus, Subscription};
+pub use types::{ChargeStatus, SubStatus, Subscription};
 
 use events::{Cancelled, Charged, Paused, Resumed, Subscribed};
 use interfaces::{PlanClient, RegistryClient};
@@ -202,10 +202,19 @@ impl SubscriptionContract {
             SubStatus::Paused => return Err(Error::SubscriptionPaused),
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+            SubStatus::MerchantEnded => return Err(Error::SubscriptionMerchantEnded),
+        }
+
+        // EXPIRY. Checked before the interval so an expired subscription
+        // reports `SubscriptionExpired` even when a trial pushed
+        // `next_charge_ledger` past `expires_at`, making the first charge
+        // impossible. `expires_at == 0` means no expiry.
+        let now = env.ledger().sequence();
+        if sub.expires_at != 0 && now > sub.expires_at {
+            return Err(Error::SubscriptionExpired);
         }
 
         // INTERVAL.
-        let now = env.ledger().sequence();
         if now < sub.next_charge_ledger {
             return Err(Error::IntervalNotElapsed);
         }
@@ -293,6 +302,14 @@ impl SubscriptionContract {
 
         sub.status = SubStatus::Cancelled;
         storage::write_sub(&env, &sub);
+
+        // Drop the id from the plan index so `get_by_plan` and friends never
+        // return a cancelled subscription. Best-effort: the status write above
+        // already enforces REVOCATION, so a stale index entry can never allow
+        // a charge.
+        if sub.plan_id != 0 {
+            storage::remove_index_value(&env, DataKey::ByPlan(sub.plan_id), sub.id);
+        }
 
         // Cancellation must succeed even if the token or the registry refuses
         // the follow-up; each outcome is reported in the event instead.
@@ -394,7 +411,7 @@ impl SubscriptionContract {
     }
 
     /// Whether `charge` would pass every contract check right now: Active,
-    /// interval elapsed, and one more period fits under the cap.
+    /// not expired, interval elapsed, and one more period fits under the cap.
     ///
     /// The token is not consulted, so a charge can still fail with
     /// `TransferFailed` if the subscriber's balance or allowance is short.
@@ -404,6 +421,11 @@ impl SubscriptionContract {
             return Ok(false);
         }
         let now = env.ledger().sequence();
+        // `expires_at == 0` means no expiry. A charge is still allowed at
+        // exactly `expires_at`; only strictly past it is expired.
+        if sub.expires_at != 0 && now > sub.expires_at {
+            return Ok(false);
+        }
         if now < sub.next_charge_ledger || now.checked_add(sub.interval_ledgers).is_none() {
             return Ok(false);
         }
@@ -411,6 +433,33 @@ impl SubscriptionContract {
             Some(total) => total <= sub.total_cap,
             None => false,
         })
+    }
+
+    /// Why `charge` would or would not succeed right now, as a single status
+    /// code. Consistent with `is_chargeable`: `ChargeStatus::Chargeable` is
+    /// returned exactly when `is_chargeable` is true.
+    pub fn charge_status(env: Env, subscription_id: u64) -> Result<ChargeStatus, Error> {
+        let sub = storage::read_sub(&env, subscription_id)?;
+        let now = env.ledger().sequence();
+        match sub.status {
+            SubStatus::Cancelled => return Ok(ChargeStatus::Cancelled),
+            SubStatus::Exhausted => return Ok(ChargeStatus::Exhausted),
+            SubStatus::MerchantEnded => return Ok(ChargeStatus::MerchantEnded),
+            SubStatus::Paused => return Ok(ChargeStatus::Paused),
+            SubStatus::Active => {}
+        }
+        // `expires_at == 0` means no expiry; still chargeable at exactly
+        // `expires_at`.
+        if sub.expires_at != 0 && now > sub.expires_at {
+            return Ok(ChargeStatus::Expired);
+        }
+        if now < sub.next_charge_ledger {
+            return Ok(ChargeStatus::IntervalNotElapsed);
+        }
+        match sub.total_charged.checked_add(sub.amount_per_period) {
+            Some(total) if total <= sub.total_cap => Ok(ChargeStatus::Chargeable),
+            _ => Ok(ChargeStatus::CapExceeded),
+        }
     }
 
     /// Cap that can still ever be charged: `total_cap - total_charged` while
