@@ -19,6 +19,9 @@ enum Op {
     Pause { id: u64 },
     Resume { id: u64 },
     Advance { ledgers: u32 },
+    BatchCharge { ids: Vec<u64> },
+    SubscribeUntil { amount: i128, interval: u32, cap: i128, expiry: u32 },
+    SubscribeWithTrial { amount: i128, interval: u32, cap: i128, trial_ledgers: u32 },
 }
 
 fuzz_target!(|ops: Vec<Op>| {
@@ -58,6 +61,19 @@ fuzz_target!(|ops: Vec<Op>| {
                 env.ledger().with_mut(|l| {
                     l.sequence_number = l.sequence_number.saturating_add(ledgers % 100_000);
                 });
+            }
+            Op::BatchCharge { ids } => {
+                let _ = client.try_batch_charge(&merchant, &ids);
+            }
+            Op::SubscribeUntil { amount, interval, cap, expiry } => {
+                let _ = client.try_subscribe_until(
+                    &subscriber, &merchant, &token, &amount, &interval, &cap, &expiry,
+                );
+            }
+            Op::SubscribeWithTrial { amount, interval, cap, trial_ledgers } => {
+                let _ = client.try_subscribe_with_trial(
+                    &subscriber, &merchant, &token, &amount, &interval, &cap, &trial_ledgers,
+                );
             }
         }
     }

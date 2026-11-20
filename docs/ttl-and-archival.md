@@ -60,6 +60,35 @@ Entry point functions that touch several of these keys in one transaction
 (e.g. `charge`, which reads `Sub(id)` and may update the registry's
 `Record(id)`) bump all of the keys they go through.
 
+### The `refresh_allowance` bump chain
+
+`refresh_allowance` is the one entry point that deliberately walks *every*
+subscription belonging to a subscriber, so it is worth tracing exactly which
+keys get bumped:
+
+1. `refresh_allowance` reads the subscriber's `BySubscriber` index
+   (`read_index`), which bumps that index entry.
+2. For each id in the index it calls `allowance::sync`.
+3. `allowance::sync` calls `outstanding` to compute the accrued allowance.
+4. `outstanding` calls `read_sub(id)` for that subscription.
+5. `read_sub` calls `bump_persistent(env, &SubKey::Sub(id))` before
+   returning the stored `Subscription`.
+
+So a single `refresh_allowance` call extends the persistent TTL of the
+`BySubscriber` index entry *and* of every `Sub(id)` entry listed in it - not
+just the subscription whose allowance happened to change. This is the
+intended behaviour: a subscriber refreshing their allowance is a sign of
+activity for all of their subscriptions, and the refresh keeps the whole set
+alive together.
+
+The chain was traced and covered by a test asserting that after
+`refresh_allowance` each `Sub(id)`'s persistent TTL is extended; no missing
+`bump_persistent` call was found in the chain, so no code change was needed.
+The only caveat is the one described above: subscriptions are only reached
+through the `BySubscriber` index, so if that index entry itself has already
+been archived, `refresh_allowance` cannot enumerate them and fails before any
+`Sub(id)` is bumped.
+
 Instance-level data is bumped the same way, via `bump_instance`, inside the
 contracts' entry points that touch instance storage.
 

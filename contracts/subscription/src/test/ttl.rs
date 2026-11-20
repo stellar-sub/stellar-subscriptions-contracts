@@ -56,6 +56,28 @@ fn instance_ttl(s: &Setup) -> u32 {
 }
 
 #[test]
+fn refresh_allowance_extends_each_subscription_persistent_ttl() {
+    let s = Setup::new();
+    let ids = [s.subscribe(), s.subscribe(), s.subscribe()];
+
+    // Move the clock close to the persistent TTL threshold so the next read
+    // of each record must extend it.
+    s.advance(2 * DAY);
+    let before: Vec<u32> = ids.iter().map(|&id| sub_ttl(&s, id)).collect();
+
+    s.client.refresh_allowance(&ids);
+
+    for (i, &id) in ids.iter().enumerate() {
+        let after = sub_ttl(&s, id);
+        assert!(
+            after > before[i],
+            "refresh_allowance did not extend Sub({id}) TTL ({} -> {after})",
+            before[i]
+        );
+    }
+}
+
+#[test]
 fn charge_cancel_pause_and_resume_extend_instance_ttl() {
     let s = Setup::new();
     let id = s.subscribe();

@@ -311,6 +311,37 @@ fn a_charge_can_never_exceed_the_allowance_even_if_the_cap_would_allow_it() {
 }
 
 #[test]
+fn subscriber_can_cancel_a_merchant_ended_subscription_and_clean_up_the_allowance() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.charge(&s.merchant, &id);
+    assert_eq!(s.allowance(), CAP - AMOUNT);
+
+    // The merchant ends the subscription.
+    s.client.end(&s.merchant, &id);
+    assert_eq!(s.sub(id).status, SubStatus::MerchantEnded);
+
+    // The subscriber can still cancel it to trigger the allowance clean-up.
+    s.client.cancel(&s.subscriber, &id);
+
+    // Cancelled overwrites MerchantEnded in storage.
+    assert_eq!(s.sub(id).status, SubStatus::Cancelled);
+
+    // The Cancelled event carries the unused cap.
+    assert_eq!(
+        s.env.events().all().filter_by_contract(&s.client.address),
+        [crate::events::Cancelled {
+            subscription_id: id,
+            unused_cap: CAP - AMOUNT,
+        }
+        .to_xdr(&s.env, &s.client.address)]
+    );
+
+    // The allowance no longer includes the cancelled subscription.
+    assert_eq!(s.allowance(), 0);
+}
+
+#[test]
 fn allowance_recomputation_succeeds_with_sixty_open_subscriptions() {
     // Create 60 subscriptions for one subscriber, cancel the last one, and
     // verify that cancel succeeds. This exercises the full allowance walk

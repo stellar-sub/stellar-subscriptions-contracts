@@ -278,15 +278,17 @@ impl SubscriptionContract {
 
     /// Subscriber cancels. Final: no further charge will ever succeed.
     ///
-    /// Allowed from Active or Paused. The status change is what enforces
-    /// REVOCATION — `charge` refuses anything that is not Active, and nothing
-    /// moves a subscription out of Cancelled. Lowering the token allowance
-    /// and updating the registry happen afterwards as clean-up, and neither
-    /// is ever allowed to block the cancellation itself.
+    /// Allowed from Active, Paused or MerchantEnded. The status change is what
+    /// enforces REVOCATION — `charge` refuses anything that is not Active, and
+    /// nothing moves a subscription out of Cancelled. A subscription the
+    /// merchant already ended can still be cancelled so the subscriber can
+    /// trigger the allowance clean-up. Lowering the token allowance and
+    /// updating the registry happen afterwards as clean-up, and neither is
+    /// ever allowed to block the cancellation itself.
     pub fn cancel(env: Env, subscriber: Address, subscription_id: u64) -> Result<(), Error> {
         let mut sub = Self::load_for_subscriber(&env, &subscriber, subscription_id)?;
         match sub.status {
-            SubStatus::Active | SubStatus::Paused => {}
+            SubStatus::Active | SubStatus::Paused | SubStatus::MerchantEnded => {}
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
         }
@@ -433,6 +435,21 @@ impl SubscriptionContract {
     /// Every subscription payable to a merchant, oldest first.
     pub fn get_by_merchant(env: Env, merchant: Address) -> Result<Vec<Subscription>, Error> {
         Self::load_indexed(&env, &DataKey::ByMerchant(merchant))
+    }
+
+    /// Total number of subscriptions ever created. O(1).
+    pub fn get_subscription_count(env: Env) -> u64 {
+        storage::read_next_id(&env).saturating_sub(1)
+    }
+
+    /// Number of subscriptions a subscriber has created. O(1).
+    pub fn get_subscription_count_by_subscriber(env: Env, subscriber: Address) -> u32 {
+        storage::read_index(&env, &DataKey::BySubscriber(subscriber)).len()
+    }
+
+    /// Number of subscriptions payable to a merchant. O(1).
+    pub fn get_subscription_count_by_merchant(env: Env, merchant: Address) -> u32 {
+        storage::read_index(&env, &DataKey::ByMerchant(merchant)).len()
     }
 
     // ---- internal helpers ----
