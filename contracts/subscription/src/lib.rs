@@ -314,6 +314,33 @@ impl SubscriptionContract {
         Ok(())
     }
 
+    /// Convenience wrapper: cancel every one of `subscriber`'s subscriptions
+    /// in `token` that is not already final (Cancelled or Exhausted).
+    ///
+    /// This was requested in issue #60 and closed without landing in
+    /// `lib.rs`; it is implemented here for real rather than left as a
+    /// client-side loop, since each `cancel` already re-authenticates and
+    /// re-reads storage, so looping client-side would spend the same gas
+    /// with no safety benefit and no single combined auth check.
+    ///
+    /// Final subscriptions in `token` are simply skipped, not errored, so
+    /// callers do not need to filter their own list first. Returns the ids
+    /// that were actually cancelled.
+    pub fn cancel_all(env: Env, subscriber: Address, token: Address) -> Result<Vec<u64>, Error> {
+        subscriber.require_auth();
+        let ids = storage::read_index(&env, &storage::DataKey::BySubscriber(subscriber.clone()));
+        let mut cancelled = Vec::new(&env);
+        for id in ids.iter() {
+            let sub = storage::read_sub(&env, id)?;
+            if sub.token != token || sub.status.is_final() {
+                continue;
+            }
+            Self::cancel(env.clone(), subscriber.clone(), id)?;
+            cancelled.push_back(id);
+        }
+        Ok(cancelled)
+    }
+
     /// Subscriber pauses charging. Only an Active subscription can be paused.
     /// The cap, the charges so far and the token allowance are untouched.
     pub fn pause(env: Env, subscriber: Address, subscription_id: u64) -> Result<(), Error> {

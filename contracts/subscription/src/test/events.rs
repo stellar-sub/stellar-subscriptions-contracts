@@ -1,7 +1,11 @@
 //! subscribe, charge, cancel, pause and resume each emit exactly one event.
 //! Token events (approve, transfer) are filtered out by contract address.
 
-use soroban_sdk::{testutils::Events as _, Event};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    token::{StellarAssetClient, TokenClient},
+    Address, Event,
+};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
 use crate::{
@@ -134,6 +138,104 @@ fn resume_emits_resumed_with_the_next_charge_ledger() {
 fn refresh_allowance_emits_allowance_refreshed_with_the_outstanding_cap() {
     let s = Setup::new();
     s.subscribe();
+    s.client.refresh_allowance(&s.subscriber, &s.token.address);
+    assert_only_event(
+        &s,
+        AllowanceRefreshed {
+            subscriber: s.subscriber.clone(),
+            token: s.token.address.clone(),
+            amount: CAP,
+        },
+    );
+}
+
+#[test]
+fn refresh_allowance_amount_is_the_sum_of_remaining_caps_of_non_final_subscriptions() {
+    let s = Setup::new();
+
+    // Exhausted: one charge of the full cap leaves nothing remaining.
+    let exhausted = s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &100,
+        &INTERVAL,
+        &100,
+        &0,
+        &0,
+    );
+    s.client.charge(&s.merchant, &exhausted);
+
+    // Cancelled before any charge: its remaining cap must not count either.
+    let cancelled = s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &200,
+        &INTERVAL,
+        &200,
+        &0,
+        &0,
+    );
+    s.client.cancel(&s.subscriber, &cancelled);
+
+    // Active, untouched: its full cap is still outstanding.
+    let active = s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &300,
+        &INTERVAL,
+        &300,
+        &0,
+        &0,
+    );
+    let _ = active;
+
+    s.client.refresh_allowance(&s.subscriber, &s.token.address);
+    assert_only_event(
+        &s,
+        AllowanceRefreshed {
+            subscriber: s.subscriber.clone(),
+            token: s.token.address.clone(),
+            amount: 300,
+        },
+    );
+}
+
+#[test]
+fn refresh_allowance_amount_only_counts_subscriptions_in_the_requested_token() {
+    let s = Setup::new();
+
+    // Active subscription in the primary token: its cap is outstanding.
+    s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+        &0,
+    );
+
+    // A second token, with its own active subscription for the same
+    // subscriber. Its cap must be excluded when refreshing the first token.
+    let admin2 = Address::generate(&s.env);
+    let sac2 = s.env.register_stellar_asset_contract_v2(admin2.clone());
+    let token2 = TokenClient::new(&s.env, &sac2.address());
+    StellarAssetClient::new(&s.env, &token2.address).mint(&s.subscriber, &1_000_000);
+    s.client.subscribe(
+        &s.subscriber,
+        &s.merchant,
+        &token2.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+        &0,
+    );
+
     s.client.refresh_allowance(&s.subscriber, &s.token.address);
     assert_only_event(
         &s,

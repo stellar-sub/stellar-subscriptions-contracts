@@ -1,10 +1,18 @@
-//! Wallets sign exactly the authorization tree they saw when simulating, and
-//! the transaction lands a few ledgers later. Any nested call the subscriber
-//! signs — the token `approve` inside subscribe, cancel and
-//! refresh_allowance — must therefore have arguments that do not change
-//! between those ledgers, or the call fails on-chain even though simulation
-//! passed. This was found on Testnet, where `subscribe` simulated cleanly and
-//! then trapped on submission.
+//! Bug under test: a `live_until_ledger` computed from the *current* ledger
+//! inside the nested token `approve` drifts between simulation and
+//! submission, because those two steps run several ledgers apart. Wallets
+//! sign exactly the authorization tree (including its argument values) they
+//! saw during simulation; if `aligned_live_until` recomputed that value from
+//! `env.ledger().sequence()` at submission time instead of snapping to a
+//! fixed window, the signed and submitted `approve` arguments would differ
+//! and the call would trap on-chain with an auth mismatch even though
+//! simulation reported success. This module asserts that the signed
+//! `live_until_ledger` stays identical across a simulated `DRIFT`-ledger gap
+//! for `subscribe`, `cancel` and `refresh_allowance` — the three entry
+//! points whose nested `approve` the subscriber signs. It was discovered on
+//! Testnet, where `subscribe` simulated cleanly and then trapped on
+//! submission; see `docs/allowance-model.md` for the windowed-expiry design
+//! this test guards.
 
 use soroban_sdk::{
     testutils::{AuthorizedFunction, MockAuth, MockAuthInvoke},
