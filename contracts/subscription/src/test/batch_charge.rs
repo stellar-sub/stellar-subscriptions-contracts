@@ -68,3 +68,43 @@ fn a_batch_over_the_limit_is_refused() {
     );
     assert_eq!(s.sub(id).total_charged, 0);
 }
+
+#[test]
+fn duplicate_id_fails_on_second_occurrence_and_rolls_back() {
+    // If the same id appears twice in a batch the first charge succeeds
+    // internally, advances next_charge_ledger, and then the second attempt
+    // hits IntervalNotElapsed. Because batch_charge is all-or-nothing the
+    // entire call is rolled back: the subscription is unchanged and the
+    // merchant receives nothing.
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    expect_err(
+        s.client
+            .try_batch_charge(&s.merchant, &Vec::from_array(&s.env, [id, id])),
+        Error::IntervalNotElapsed,
+    );
+
+    // Rolled back: no charge was recorded and no funds moved.
+    assert_eq!(s.sub(id).total_charged, 0);
+    assert_eq!(s.balance(&s.merchant), 0);
+}
+
+#[test]
+fn batch_with_exactly_max_ids_succeeds() {
+    // MAX_BATCH is the inclusive upper bound: a batch of exactly MAX_BATCH
+    // ids must succeed, not be refused.
+    let s = Setup::new();
+    let mut ids = Vec::new(&s.env);
+    for _ in 0..MAX_BATCH {
+        ids.push_back(s.subscribe());
+    }
+
+    s.client.batch_charge(&s.merchant, &ids);
+
+    // Every subscription was charged exactly once.
+    for id in ids.iter() {
+        assert_eq!(s.sub(id).total_charged, AMOUNT);
+    }
+    assert_eq!(s.balance(&s.merchant), MAX_BATCH as i128 * AMOUNT);
+}
