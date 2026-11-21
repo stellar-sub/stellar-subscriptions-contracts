@@ -161,6 +161,7 @@ impl PlanContract {
             amount_per_period,
             interval_ledgers,
             default_cap,
+            description: None,
             active: true,
             created_at: env.ledger().sequence(),
         };

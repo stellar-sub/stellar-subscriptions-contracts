@@ -17,7 +17,8 @@ deployment.
 6. [Charging a subscriber](#6-charging-a-subscriber)
 7. [Listing your subscribers](#7-listing-your-subscribers)
 8. [Deactivating a plan](#8-deactivating-a-plan)
-9. [Common errors](#9-common-errors)
+9. [Restoring archived subscription data](#9-restoring-archived-subscription-data)
+10. [Common errors](#10-common-errors)
 
 ---
 
@@ -476,7 +477,31 @@ The returned record will show `"active": false`.
 
 ---
 
-## 9. Common errors
+## 9. Restoring archived subscription data
+
+If a subscription's persistent entry has archived (the entry sat untouched
+past its TTL), reads such as `get_subscription` fail until the entry is
+restored. The contract has no restore function; restoration is done with the
+CLI, using the procedure in
+[`docs/ttl-and-archival.md`](ttl-and-archival.md#restoring-an-archived-entry).
+
+```bash
+stellar contract restore --id $SUBSCRIPTION_CONTRACT \
+  --durability persistent \
+  --key '<KEY for Sub(SUB_ID)>'
+```
+
+Check the key encoding with `stellar contract restore --help` for your CLI
+version. After restoring, confirm the record is readable again:
+
+```bash
+stellar contract invoke --id $SUBSCRIPTION_CONTRACT --source merchant \
+  -- get_subscription --subscription_id $SUB_ID
+```
+
+---
+
+## 10. Common errors
 
 The contract rejects calls by returning a numeric error code. The Stellar CLI
 surfaces it as a transaction failure. Below are the errors you are most likely

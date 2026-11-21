@@ -17,11 +17,14 @@ mod types;
 
 pub use errors::Error;
 pub use types::{
-    RegistryStats, SubscriptionRecord, Writers, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED,
-    STATUS_PAUSED,
+    MerchantStats, RegistryStats, SubscriptionRecord, Writers, STATUS_ACTIVE, STATUS_CANCELLED,
+    STATUS_EXHAUSTED, STATUS_PAUSED,
 };
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
+/// Largest page `get_sub_records_by_status` will return.
+pub const MAX_PAGE_SIZE: u32 = 100;
 
 /// The registry contract's entry point.
 // `contract` generates an undocumentable registration shim from this struct.
@@ -113,6 +116,7 @@ impl RegistryContract {
             },
         );
         storage::push_id(&env, subscription_id);
+        storage::push_status_id(&env, STATUS_ACTIVE, subscription_id);
 
         let mut stats = storage::read_stats(&env);
         stats.total_subscriptions = stats
@@ -177,6 +181,10 @@ impl RegistryContract {
                 .ok_or(Error::Overflow)?;
         }
 
+        if record.status != status {
+            storage::remove_status_id(&env, record.status, subscription_id);
+            storage::push_status_id(&env, status, subscription_id);
+        }
         record.total_charged = total_charged;
         record.status = status;
         storage::write_record(&env, &record);
@@ -201,6 +209,35 @@ impl RegistryContract {
     /// Every registered subscription id, oldest first.
     pub fn get_all_subscriptions(env: Env) -> Vec<u64> {
         storage::read_all_ids(&env)
+    }
+
+    /// A page of subscription ids whose last reported status is `status`
+    /// (0 Active, 1 Paused, 2 Cancelled, 3 Exhausted).
+    ///
+    /// Returns at most `limit` ids, starting at offset `start` within the
+    /// index for that status. `limit` may be at most [`MAX_PAGE_SIZE`]. An
+    /// offset past the end returns an empty page.
+    pub fn get_sub_records_by_status(
+        env: Env,
+        status: u32,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<u64>, Error> {
+        if status > STATUS_EXHAUSTED {
+            return Err(Error::InvalidStatus);
+        }
+        if limit > MAX_PAGE_SIZE {
+            return Err(Error::PageSizeTooLarge);
+        }
+        let ids = storage::read_ids_by_status(&env, status);
+        let mut out = Vec::new(&env);
+        let end = start.saturating_add(limit).min(ids.len());
+        for i in start..end {
+            if let Some(id) = ids.get(i) {
+                out.push_back(id);
+            }
+        }
+        Ok(out)
     }
 
     /// Ids of subscriptions whose last reported status is Active.

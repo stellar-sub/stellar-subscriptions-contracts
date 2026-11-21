@@ -29,6 +29,7 @@ This document describes the complete storage layout for all three contracts in t
 | `Record(u64)` | `SubscriptionRecord` | Individual subscription record by ID |
 | `AllSubscriptions` | `Vec<u64>` | Ordered list of all subscription IDs (oldest first) |
 | `Plan(u64)` | `bool` | Marks a plan ID as registered/counted (deduplication) |
+| `ByStatus(u32)` | `Vec<u64>` | Subscription IDs whose last reported status is the given code (0 Active, 1 Paused, 2 Cancelled, 3 Exhausted). Written by `register_subscription` and moved between entries by `update_subscription`. Read by `get_subscription_records_by_status`. |
 
 ### Collision Analysis
 

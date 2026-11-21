@@ -331,3 +331,74 @@ fn version_is_1() {
     let s = Setup::new();
     assert_eq!(s.client.version(), 1);
 }
+
+#[test]
+fn new_subscriptions_are_indexed_under_active() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    let active = ids(s.client.get_sub_records_by_status(&STATUS_ACTIVE, &0, &10));
+    assert_eq!(active, std::vec![1, 2]);
+    assert!(ids(s.client.get_sub_records_by_status(&STATUS_PAUSED, &0, &10)).is_empty());
+}
+
+#[test]
+fn status_change_moves_the_id_between_indexes() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    s.client.update_subscription(&1, &0, &STATUS_PAUSED);
+
+    assert_eq!(
+        ids(s.client.get_sub_records_by_status(&STATUS_ACTIVE, &0, &10)),
+        std::vec![2]
+    );
+    assert_eq!(
+        ids(s.client.get_sub_records_by_status(&STATUS_PAUSED, &0, &10)),
+        std::vec![1]
+    );
+
+    s.client.update_subscription(&1, &0, &STATUS_CANCELLED);
+    assert!(ids(s.client.get_sub_records_by_status(&STATUS_PAUSED, &0, &10)).is_empty());
+    assert_eq!(
+        ids(s
+            .client
+            .get_sub_records_by_status(&STATUS_CANCELLED, &0, &10)),
+        std::vec![1]
+    );
+}
+
+#[test]
+fn status_index_pages_by_start_and_limit() {
+    let s = Setup::new();
+    for id in 1..=5 {
+        s.register(id);
+    }
+    assert_eq!(
+        ids(s.client.get_sub_records_by_status(&STATUS_ACTIVE, &0, &2)),
+        std::vec![1, 2]
+    );
+    assert_eq!(
+        ids(s.client.get_sub_records_by_status(&STATUS_ACTIVE, &2, &2)),
+        std::vec![3, 4]
+    );
+    assert_eq!(
+        ids(s.client.get_sub_records_by_status(&STATUS_ACTIVE, &4, &2)),
+        std::vec![5]
+    );
+    assert!(ids(s.client.get_sub_records_by_status(&STATUS_ACTIVE, &9, &2)).is_empty());
+}
+
+#[test]
+fn status_index_rejects_unknown_status_and_oversized_pages() {
+    let s = Setup::new();
+    expect_err(
+        s.client.try_get_sub_records_by_status(&4, &0, &10),
+        Error::InvalidStatus,
+    );
+    expect_err(
+        s.client
+            .try_get_sub_records_by_status(&STATUS_ACTIVE, &0, &101),
+        Error::PageSizeTooLarge,
+    );
+}

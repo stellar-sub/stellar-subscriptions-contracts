@@ -328,6 +328,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1266,6 +1270,8 @@ dependencies = [
 name = "plan"
 version = "0.1.0"
 dependencies = [
+ "common",
+ "registry",
  "soroban-sdk",
 ]
 
@@ -1471,6 +1477,8 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "registry"
 version = "0.1.0"
 dependencies = [
+ "common",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -1975,6 +1983,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 name = "subscription"
 version = "0.1.0"
 dependencies = [
+ "common",
  "plan",
  "proptest",
  "registry",

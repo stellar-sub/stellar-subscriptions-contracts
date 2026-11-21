@@ -14,23 +14,27 @@ Each contract's `storage.rs` uses two kinds of entries, both bumped with the
 same constants:
 
 ```rust
-const DAY_IN_LEDGERS: u32 = 17_280;
+use common::DAY_IN_LEDGERS; // contracts/common: 17_280
 
-const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
+const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
 
 const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGERS;
 ```
 
-(identical in `contracts/subscription/src/storage.rs`,
-`contracts/registry/src/storage.rs` and `contracts/plan/src/storage.rs`.)
+(the subscription, registry and plan contracts all import `DAY_IN_LEDGERS`
+from `contracts/common`, so the day length is defined once. The instance
+constants are set per contract; the values above are the subscription
+contract's, which is the one that must stay live between charges.)
 
 - **Instance storage** holds data there is only one of per contract:
   `Admin`, `NextId`, linked contract addresses, `Writers`, `Stats`. It is
-  bumped to live 7 days (`INSTANCE_BUMP_AMOUNT`) whenever
+  bumped to live 30 days (`INSTANCE_BUMP_AMOUNT`) whenever
   `bump_instance(env)` runs, once its remaining TTL falls to
-  `INSTANCE_LIFETIME_THRESHOLD` (6 days) or below.
+  `INSTANCE_LIFETIME_THRESHOLD` (29 days) or below. The 30-day bump is what
+  lets a deployment with only monthly subscriptions go a full billing cycle
+  without a contract call and still accept the next `charge`.
 - **Persistent storage** holds per-id records that must survive
   independently of each other: a `Subscription`, a `Plan`, a
   `SubscriptionRecord`, and the index entries (`BySubscriber`, `ByMerchant`,
@@ -89,11 +93,52 @@ of the `Sub(id)` entries they list.
 
 ## Restoring an archived entry
 
-Soroban allows an archived persistent entry to be restored (paying the
-restoration fee) as long as it is within the network's maximum entry
-lifetime of its eviction; beyond that window, restoration is not possible by
-anyone. None of these contracts implement a restore path of their own - this
-would be done with the network's standard restore operation, outside of any
-contract call, before calling back into the contract. This repository has
-no tooling for that today; it is a gap the contracts do not address, not a
-documented workflow.
+Soroban allows an archived persistent entry to be restored, for a fee, as
+long as it is within the network's maximum entry lifetime of its eviction.
+Beyond that window it cannot be restored by anyone.
+
+None of these contracts have a restore entry point, and they cannot add one
+that works. Restoration is a ledger operation: it is performed in a
+transaction before the contract is called, not from inside a contract call,
+so a `restore_subscription(id)` function would have no way to bring back an
+evicted `Sub(id)`. Recovery is done with the Stellar CLI.
+
+### Procedure
+
+1. Confirm the entry is archived. A read of an archived `Sub(id)` fails:
+
+   ```bash
+   stellar contract invoke --id $SUBSCRIPTION_CONTRACT --source merchant \
+     -- get_subscription --subscription_id $SUB_ID
+   ```
+
+   An archived entry is reported as an error from the simulation, which
+   names the missing or archived key.
+
+2. Restore the persistent entry with `stellar contract restore`. Pass the
+   contract id, the key, and the persistent durability:
+
+   ```bash
+   stellar contract restore --id $SUBSCRIPTION_CONTRACT \
+     --durability persistent \
+     --key '<KEY for Sub(SUB_ID)>'
+   ```
+
+   Replace `<KEY for Sub(SUB_ID)>` with the key of the subscription record.
+   The key is the `DataKey::Sub(u64)` value, so it is written as an enum
+   variant with the subscription id. Check the exact key encoding against
+   `stellar contract restore --help` for your CLI version before running
+   this, because the argument format for enum keys differs between releases.
+
+3. Repeat the read from step 1. It should now return the subscription.
+
+If the restore is refused, the entry is past the maximum restoration window
+and cannot be recovered.
+
+### Prevention
+
+Charging, pausing, resuming and cancelling each extend the instance and the
+touched entries, so a subscription that is used regularly does not archive.
+To guard a deployment with long billing cycles, call a read-only entry point
+such as `get_subscription` at least once a month for each subscription, or
+run `charge` on each billing date.

@@ -2,9 +2,12 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 
 use crate::{errors::Error, types::Subscription};
 
-const DAY_IN_LEDGERS: u32 = 17_280;
+use common::DAY_IN_LEDGERS;
 
-const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
+/// Instance storage is extended to 30 days. A deployment whose subscriptions
+/// bill monthly may see no contract call for weeks; a shorter bump let the
+/// instance archive in that gap.
+const INSTANCE_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
 
 const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;

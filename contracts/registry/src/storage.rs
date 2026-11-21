@@ -5,7 +5,7 @@ use crate::{
     types::{MerchantStats, RegistryStats, SubscriptionRecord, Writers},
 };
 
-const DAY_IN_LEDGERS: u32 = 17_280;
+use common::DAY_IN_LEDGERS;
 
 const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = INSTANCE_BUMP_AMOUNT - DAY_IN_LEDGERS;
@@ -28,6 +28,9 @@ pub enum DataKey {
     AllSubscriptions,
     /// Persistent: marks a plan id as counted.
     Plan(u64),
+    /// Persistent: ids of subscriptions whose last reported status is the
+    /// given status code, in the order they entered that status.
+    ByStatus(u32),
     /// Instance: per-merchant counters.
     MerchantStats(Address),
 }
@@ -125,6 +128,43 @@ pub fn push_id(env: &Env, id: u64) {
     ids.push_back(id);
     env.storage().persistent().set(&key, &ids);
     bump_persistent(env, &key);
+}
+
+/// Ids of subscriptions currently recorded with `status`.
+pub fn read_ids_by_status(env: &Env, status: u32) -> Vec<u64> {
+    let key = DataKey::ByStatus(status);
+    match env.storage().persistent().get(&key) {
+        Some(ids) => {
+            bump_persistent(env, &key);
+            ids
+        }
+        None => Vec::new(env),
+    }
+}
+
+fn write_ids_by_status(env: &Env, status: u32, ids: &Vec<u64>) {
+    let key = DataKey::ByStatus(status);
+    env.storage().persistent().set(&key, ids);
+    bump_persistent(env, &key);
+}
+
+/// Add `id` to the index for `status`.
+pub fn push_status_id(env: &Env, status: u32, id: u64) {
+    let mut ids = read_ids_by_status(env, status);
+    ids.push_back(id);
+    write_ids_by_status(env, status, &ids);
+}
+
+/// Remove `id` from the index for `status`, if present.
+pub fn remove_status_id(env: &Env, status: u32, id: u64) {
+    let ids = read_ids_by_status(env, status);
+    let mut kept = Vec::new(env);
+    for existing in ids.iter() {
+        if existing != id {
+            kept.push_back(existing);
+        }
+    }
+    write_ids_by_status(env, status, &kept);
 }
 
 /// Mark a plan as counted. Returns false if it already was.
