@@ -54,7 +54,7 @@ are never renumbered.
 | `pause(subscriber, subscription_id)` | **subscriber** | |
 | `resume(subscriber, subscription_id)` | **subscriber** | |
 | `refresh_allowance(subscriber, token) -> i128` | **subscriber** | Re-approves the outstanding cap with a fresh expiry. |
-| `get_subscription`, `is_chargeable`, `remaining_cap`, `get_by_subscriber`, `get_by_merchant`, `get_plan_contract`, `get_registry` | none | Views. |
+| `get_subscription`, `get_subscription_by_id`, `is_chargeable`, `remaining_cap`, `get_by_subscriber`, `get_by_merchant`, `get_plan_contract`, `get_registry`, `get_admin` | none | Views. `get_subscription_by_id` is an alias of `get_subscription`. |
 
 The admin **cannot** charge, cancel, pause or resume anything, and cannot
 change a link once set.

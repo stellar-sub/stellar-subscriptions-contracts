@@ -41,6 +41,7 @@ field name, so **field names must not change**.
 | `get_plans_by_merchant(merchant) -> Vec<Plan>` | none | Active and inactive, oldest first. |
 | `get_active_plans() -> Vec<Plan>` | none | Oldest first. |
 | `get_registry() -> Option<Address>` | none | |
+| `get_admin() -> Address` | none | |
 
 ## What deactivation does and does not do
 

@@ -21,6 +21,11 @@
 # Usage:
 #   ./examples/subscribe.sh
 #   PLAN_ID=<plan-id> ./examples/subscribe.sh
+#   TRIAL_LEDGERS=<n> PLAN_ID=<plan-id> ./examples/subscribe.sh
+#
+# See also:
+#   examples/subscribe-with-trial.sh - subscribes with a 1-week free trial.
+#   examples/subscribe-until.sh      - subscribes with a fixed expiry ledger.
 
 set -euo pipefail
 
@@ -79,7 +84,8 @@ SUBSCRIBE_OUTPUT="$(
     -- \
     subscribe \
       --plan_id "${PLAN_ID}" \
-      --subscriber "${SUBSCRIBER_IDENTITY}"
+      --subscriber "${SUBSCRIBER_IDENTITY}" \
+      --trial_ledgers "${TRIAL_LEDGERS:-0}"
 )"
 
 # The invoke command prints the returned subscription id (a u64) on stdout.

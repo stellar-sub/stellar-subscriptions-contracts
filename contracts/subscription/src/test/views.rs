@@ -43,6 +43,48 @@ fn remaining_cap_and_is_chargeable_track_the_lifecycle() {
 }
 
 #[test]
+fn remaining_cap_is_zero_once_exhausted() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    while s.client.is_chargeable(&id) {
+        s.client.charge(&s.merchant, &id);
+        s.advance(INTERVAL);
+    }
+    assert_eq!(s.sub(id).status, SubStatus::Exhausted);
+    assert_eq!(s.client.remaining_cap(&id), 0);
+}
+
+#[test]
+fn remaining_cap_is_zero_after_merchant_end() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    s.client.charge(&s.merchant, &id);
+    assert!(s.client.remaining_cap(&id) > 0);
+
+    s.client.merchant_end(&s.merchant, &id);
+    assert_eq!(s.sub(id).status, SubStatus::MerchantEnded);
+    assert_eq!(s.client.remaining_cap(&id), 0);
+}
+
+#[test]
+fn remaining_cap_plus_total_charged_never_exceeds_total_cap() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    for _ in 0..20 {
+        if s.client.is_chargeable(&id) {
+            s.client.charge(&s.merchant, &id);
+        }
+        let sub = s.sub(id);
+        let remaining = s.client.remaining_cap(&id);
+        assert!(remaining + sub.total_charged <= sub.total_cap);
+        s.advance(INTERVAL);
+    }
+}
+
+#[test]
 fn views_report_nothing_left_after_cancel() {
     let s = Setup::new();
     let id = s.subscribe();
