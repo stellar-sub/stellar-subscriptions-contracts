@@ -2,7 +2,7 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 
 use crate::{
     errors::Error,
-    types::{MerchantStats, RegistryStats, SubscriptionRecord, Writers},
+    types::{RegistryStats, SubscriptionRecord, Writers},
 };
 
 const DAY_IN_LEDGERS: u32 = 17_280;
@@ -28,8 +28,6 @@ pub enum DataKey {
     AllSubscriptions,
     /// Persistent: marks a plan id as counted.
     Plan(u64),
-    /// Instance: per-merchant counters.
-    MerchantStats(Address),
 }
 
 pub fn bump_instance(env: &Env) {
@@ -119,6 +117,16 @@ pub fn read_all_ids(env: &Env) -> Vec<u64> {
     }
 }
 
+/// Extend the TTL of the `AllSubscriptions` vec if it exists. It is otherwise
+/// only bumped by `register_subscription`, so a registry that goes quiet could
+/// archive the whole history.
+pub fn keep_all_subscriptions_alive(env: &Env) {
+    let key = DataKey::AllSubscriptions;
+    if env.storage().persistent().has(&key) {
+        bump_persistent(env, &key);
+    }
+}
+
 pub fn push_id(env: &Env, id: u64) {
     let key = DataKey::AllSubscriptions;
     let mut ids = read_all_ids(env);
@@ -136,17 +144,4 @@ pub fn mark_plan(env: &Env, plan_id: u64) -> bool {
     env.storage().persistent().set(&key, &true);
     bump_persistent(env, &key);
     true
-}
-
-pub fn read_merchant_stats(env: &Env, merchant: &Address) -> MerchantStats {
-    env.storage()
-        .instance()
-        .get(&DataKey::MerchantStats(merchant.clone()))
-        .unwrap_or_default()
-}
-
-pub fn write_merchant_stats(env: &Env, merchant: &Address, stats: &MerchantStats) {
-    env.storage()
-        .instance()
-        .set(&DataKey::MerchantStats(merchant.clone()), stats);
 }

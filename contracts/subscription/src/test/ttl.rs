@@ -82,3 +82,32 @@ fn charge_cancel_pause_and_resume_extend_instance_ttl() {
     s.client.cancel(&s.subscriber, &id);
     assert!(instance_ttl(&s) > before, "cancel did not extend instance TTL");
 }
+
+/// The persistent TTL of a subscriber's index entry.
+fn subscriber_index_ttl(s: &Setup) -> u32 {
+    s.env.as_contract(&s.client.address, || {
+        s.env
+            .storage()
+            .persistent()
+            .get_ttl(&DataKey::BySubscriber(s.subscriber.clone()))
+    })
+}
+
+#[test]
+fn charging_extends_the_subscriber_index_ttl() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // The subscriber never calls again. Only the merchant charges.
+    s.advance(2 * DAY);
+    let before = subscriber_index_ttl(&s);
+
+    s.client.charge(&s.merchant, &id);
+    let after = subscriber_index_ttl(&s);
+
+    assert!(
+        after > before,
+        "charge did not extend BySubscriber ({before} -> {after})"
+    );
+    assert_eq!(s.client.get_by_subscriber(&s.subscriber).len(), 1);
+}

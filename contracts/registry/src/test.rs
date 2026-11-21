@@ -3,7 +3,7 @@ extern crate std;
 use core::fmt::Debug;
 
 use soroban_sdk::{
-    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    testutils::{storage::Persistent as _, Address as _, Ledger as _, MockAuth, MockAuthInvoke},
     Address, Env, IntoVal,
 };
 
@@ -330,4 +330,60 @@ fn only_the_plan_contract_can_register_plans() {
 fn version_is_1() {
     let s = Setup::new();
     assert_eq!(s.client.version(), 1);
+}
+
+// ── AllSubscriptions archival ────────────────────────────────────────────────
+
+/// Ledgers in one day, matching `storage.rs`.
+const DAY: u32 = 17_280;
+
+fn advance_days(s: &Setup, days: u32) {
+    let now = s.env.ledger().sequence();
+    s.env.ledger().set_sequence_number(now + days * DAY);
+}
+
+fn all_subscriptions_ttl(s: &Setup) -> u32 {
+    s.env.as_contract(&s.client.address, || {
+        s.env
+            .storage()
+            .persistent()
+            .get_ttl(&crate::storage::DataKey::AllSubscriptions)
+    })
+}
+
+#[test]
+fn keep_alive_extends_the_all_subscriptions_ttl() {
+    let s = Setup::new();
+    s.register(1);
+
+    advance_days(&s, 2);
+    let before = all_subscriptions_ttl(&s);
+    s.client.keep_alive();
+    let after = all_subscriptions_ttl(&s);
+
+    assert!(
+        after > before,
+        "keep_alive did not extend AllSubscriptions ({before} -> {after})"
+    );
+}
+
+#[test]
+fn history_survives_a_quiet_period_when_kept_alive() {
+    let s = Setup::new();
+    s.register(1);
+
+    // A registry with no new subscriptions for 60 days. Keeping it alive every
+    // 20 days leaves the full history readable at the end.
+    for _ in 0..3 {
+        advance_days(&s, 20);
+        s.client.keep_alive();
+    }
+    assert_eq!(ids(s.client.get_all_subscriptions()), std::vec![1]);
+}
+
+#[test]
+fn keep_alive_on_an_empty_registry_is_a_no_op() {
+    let s = Setup::new();
+    s.client.keep_alive();
+    assert!(s.client.get_all_subscriptions().is_empty());
 }

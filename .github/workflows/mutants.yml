@@ -1,0 +1,48 @@
+name: Mutants (cargo-mutants)
+
+# Mutation testing on a schedule, so code added after issue #80 is checked for
+# surviving mutants. Accepted surviving mutants are excluded with exclude_re in
+# .cargo/mutants.toml and explained in docs/mutants.md.
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        run: rustup show
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@cargo-mutants
+
+      # Fails the job on any missed (surviving) mutant that is not listed as
+      # an accepted risk. --timeout bounds mutants that make a test loop forever.
+      - name: Run mutants on the contracts
+        run: cargo mutants --workspace --timeout 300
+
+      - name: Upload mutants report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-out
+          path: mutants.out
+          if-no-files-found: ignore

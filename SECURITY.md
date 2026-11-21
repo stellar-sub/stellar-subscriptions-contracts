@@ -98,6 +98,15 @@ and changes nothing (tested).
 - **Not audited.** No third-party audit has been done. These contracts are
   deployed on Testnet only.
 
+- **Registry history can archive if the registry goes quiet (#206).**
+  `AllSubscriptions` is a single persistent vec. It is bumped only by
+  `register_subscription`, so if no subscription is registered for 30 days and
+  nothing else touches it, the entry archives. `get_all_subscriptions` then
+  returns an empty vec, and the next registration starts a new vec, losing the
+  prior history from the registry's view. Mitigation: call the permissionless
+  `keep_alive` at least every 20 days (a monitor or cron job). The history
+  itself is not deleted and can be restored; see `docs/ttl-and-archival.md`.
+
 ## Experiment: cancel against a budget-exhausting token (result pending)
 
 **Status: not yet run. No result is recorded here.** The open item under

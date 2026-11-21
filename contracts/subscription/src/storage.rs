@@ -109,6 +109,16 @@ pub fn write_sub(env: &Env, sub: &Subscription) {
     bump_persistent(env, &key);
 }
 
+/// Extend the TTL of an index entry that already exists. Indexes are written
+/// once, at subscribe time, so a subscriber or merchant whose subscriptions
+/// are only ever charged would otherwise let the index archive while its
+/// records stay live. A missing entry is left alone.
+pub fn touch_index(env: &Env, key: &DataKey) {
+    if env.storage().persistent().has(key) {
+        bump_persistent(env, key);
+    }
+}
+
 pub fn read_index(env: &Env, key: &DataKey) -> Vec<u64> {
     match env.storage().persistent().get(key) {
         Some(ids) => {

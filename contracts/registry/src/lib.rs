@@ -23,6 +23,9 @@ pub use types::{
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
+/// Version of this contract.
+pub const VERSION: u32 = 1;
+
 /// The registry contract's entry point.
 // `contract` generates an undocumentable registration shim from this struct.
 #[allow(missing_docs)]
@@ -198,9 +201,22 @@ impl RegistryContract {
         storage::read_record(&env, subscription_id)
     }
 
+    /// Version of this contract.
+    pub fn version() -> u32 {
+        VERSION
+    }
+
     /// Every registered subscription id, oldest first.
     pub fn get_all_subscriptions(env: Env) -> Vec<u64> {
         storage::read_all_ids(&env)
+    }
+
+    /// Extend the TTL of the `AllSubscriptions` history so it cannot archive
+    /// while the registry is quiet. Permissionless: it only extends lifetime
+    /// and never changes data, so anyone (an operator's cron job, say) may call it.
+    pub fn keep_alive(env: Env) {
+        storage::bump_instance(&env);
+        storage::keep_all_subscriptions_alive(&env);
     }
 
     /// Ids of subscriptions whose last reported status is Active.

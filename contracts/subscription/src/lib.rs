@@ -229,6 +229,11 @@ impl SubscriptionContract {
             sub.status = SubStatus::Exhausted;
         }
         storage::write_sub(&env, &sub);
+        // Keep the subscriber and merchant indexes alive too, so a schedule
+        // that is charged but never touched by its subscriber cannot have
+        // its index archived out from under it.
+        storage::touch_index(&env, &DataKey::BySubscriber(sub.subscriber.clone()));
+        storage::touch_index(&env, &DataKey::ByMerchant(sub.merchant.clone()));
 
         // Every check has passed. If the token refuses the transfer, the
         // error return rolls back the write above, so a failed pull never
