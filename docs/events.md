@@ -321,12 +321,37 @@ No data fields.
 
 ## Registry contract
 
-Source: `contracts/registry/src/lib.rs`
+Source: `contracts/registry/src/events.rs`
 
-The registry contract emits **no events**. It is a read-optimised index
-updated by calls from the subscription and plan contracts. All meaningful
-state changes are recorded by those contracts' events; the registry's own
-state can be reconstructed by replaying them.
+The registry emits one event per successful index write. A rejected call emits
+nothing. Indexers can follow these instead of polling `get_stats`.
+
+### `subscription_registered`
+
+Emitted by `register_subscription` when a subscription is indexed for the first
+time. It starts Active.
+
+| Position | Kind | Type | Value |
+|---|---|---|---|
+| topic 0 | event name | `Symbol` | `"subscription_registered"` |
+| topic 1 | subscription_id | `u64` | e.g. `1` |
+| topic 2 | subscriber | `Address` | subscriber's Stellar address |
+| topic 3 | merchant | `Address` | merchant's Stellar address |
+
+### `subscription_updated`
+
+Emitted by `update_subscription` after the indexed total and status change.
+
+| Position | Kind | Type | Value |
+|---|---|---|---|
+| topic 0 | event name | `Symbol` | `"subscription_updated"` |
+| topic 1 | subscription_id | `u64` | e.g. `1` |
+| data 0 | total_charged | `i128` | new total, raw token units |
+| data 1 | status | `u32` | new status: 0 Active, 1 Paused, 2 Cancelled, 3 Exhausted |
+
+The registry's own state can still be reconstructed from the subscription
+contract's events; these events are a convenience for indexers that only watch
+the registry.
 
 ---
 

@@ -135,6 +135,7 @@ fn create_plan_stores_every_field() {
             default_cap: CAP,
             active: true,
             created_at: 1_000,
+            description: None,
         }
     );
 }

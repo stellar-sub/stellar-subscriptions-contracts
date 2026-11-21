@@ -3,11 +3,12 @@ extern crate std;
 use core::fmt::Debug;
 
 use soroban_sdk::{
-    testutils::{Address as _, MockAuth, MockAuthInvoke},
-    Address, Env, IntoVal,
+    testutils::{Address as _, Events as _, Ledger as _, MockAuth, MockAuthInvoke},
+    Address, Env, Event, IntoVal,
 };
 
 use crate::{
+    events::{SubscriptionRegistered, SubscriptionUpdated},
     Error, RegistryContract, RegistryContractClient, RegistryStats, SubscriptionRecord,
     STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
 };
@@ -22,6 +23,7 @@ struct Setup {
     plans: Address,
     subscriber: Address,
     merchant: Address,
+    token: Address,
 }
 
 impl Setup {
@@ -36,6 +38,7 @@ impl Setup {
             plans: Address::generate(&env),
             subscriber: Address::generate(&env),
             merchant: Address::generate(&env),
+            token: Address::generate(&env),
             env,
             client,
             admin,
@@ -50,7 +53,7 @@ impl Setup {
 
     fn register(&self, id: u64) {
         self.client
-            .register_subscription(&id, &self.subscriber, &self.merchant);
+            .register_subscription(&id, &self.subscriber, &self.merchant, &self.token);
     }
 
     fn stats(&self) -> RegistryStats {
@@ -110,7 +113,7 @@ fn writes_before_configuration_are_rejected() {
     let s = Setup::unconfigured();
     expect_err(
         s.client
-            .try_register_subscription(&1, &s.subscriber, &s.merchant),
+            .try_register_subscription(&1, &s.subscriber, &s.merchant, &s.token),
         Error::NotConfigured,
     );
     expect_err(s.client.try_register_plan(&1), Error::NotConfigured);
@@ -131,6 +134,7 @@ fn register_subscription_counts_it_as_active() {
             id: 1,
             subscriber: s.subscriber.clone(),
             merchant: s.merchant.clone(),
+            token: s.token.clone(),
             total_charged: 0,
             status: STATUS_ACTIVE,
         }
@@ -143,7 +147,7 @@ fn registering_the_same_subscription_twice_is_rejected() {
     s.register(1);
     expect_err(
         s.client
-            .try_register_subscription(&1, &s.subscriber, &s.merchant),
+            .try_register_subscription(&1, &s.subscriber, &s.merchant, &s.token),
         Error::SubscriptionAlreadyRegistered,
     );
     assert_eq!(s.stats().total_subscriptions, 1);
@@ -164,7 +168,7 @@ fn only_the_subscription_contract_can_register_subscriptions() {
                 sub_invokes: &[],
             },
         }])
-        .try_register_subscription(&1, &s.subscriber, &s.merchant);
+        .try_register_subscription(&1, &s.subscriber, &s.merchant, &s.token);
     assert!(result.is_err());
     assert_eq!(s.stats().total_subscriptions, 0);
 }
@@ -330,4 +334,158 @@ fn only_the_plan_contract_can_register_plans() {
 fn version_is_1() {
     let s = Setup::new();
     assert_eq!(s.client.version(), 1);
+}
+
+#[test]
+fn page_returns_the_requested_window_oldest_first() {
+    let s = Setup::new();
+    for id in 1..=5 {
+        s.register(id);
+    }
+    let page = s.client.get_all_subscriptions_page(&1, &2);
+    assert_eq!(ids(page), std::vec![2, 3]);
+}
+
+#[test]
+fn page_past_the_end_is_empty_and_short_at_the_tail() {
+    let s = Setup::new();
+    for id in 1..=3 {
+        s.register(id);
+    }
+    assert_eq!(
+        ids(s.client.get_all_subscriptions_page(&2, &10)),
+        std::vec![3]
+    );
+    assert!(s.client.get_all_subscriptions_page(&3, &10).is_empty());
+    assert!(s.client.get_all_subscriptions_page(&u32::MAX, &10).is_empty());
+}
+
+#[test]
+fn pages_cover_the_whole_index_in_order() {
+    let s = Setup::new();
+    for id in 1..=5 {
+        s.register(id);
+    }
+    let mut collected = std::vec::Vec::new();
+    let mut start = 0;
+    loop {
+        let page = ids(s.client.get_all_subscriptions_page(&start, &2));
+        if page.is_empty() {
+            break;
+        }
+        start += page.len() as u32;
+        collected.extend(page);
+    }
+    assert_eq!(collected, ids(s.client.get_all_subscriptions()));
+}
+
+#[test]
+fn page_size_above_the_maximum_is_rejected() {
+    let s = Setup::new();
+    s.register(1);
+    expect_err(
+        s.client
+            .try_get_all_subscriptions_page(&0, &(crate::MAX_PAGE_SIZE + 1)),
+        Error::PageSizeTooLarge,
+    );
+    // The maximum itself is allowed.
+    assert_eq!(
+        ids(s.client.get_all_subscriptions_page(&0, &crate::MAX_PAGE_SIZE)),
+        std::vec![1]
+    );
+}
+
+/// The last invocation emitted exactly `expected` from the registry.
+fn assert_only_event<E: Event>(s: &Setup, expected: E) {
+    assert_eq!(
+        s.env.events().all().filter_by_contract(&s.client.address),
+        [expected.to_xdr(&s.env, &s.client.address)]
+    );
+}
+
+#[test]
+fn register_emits_subscription_registered() {
+    let s = Setup::new();
+    s.register(7);
+    assert_only_event(
+        &s,
+        SubscriptionRegistered {
+            subscription_id: 7,
+            subscriber: s.subscriber.clone(),
+            merchant: s.merchant.clone(),
+        },
+    );
+}
+
+#[test]
+fn update_emits_subscription_updated_with_new_values() {
+    let s = Setup::new();
+    s.register(7);
+    s.client.update_subscription(&7, &250, &STATUS_PAUSED);
+    assert_only_event(
+        &s,
+        SubscriptionUpdated {
+            subscription_id: 7,
+            total_charged: 250,
+            status: STATUS_PAUSED,
+        },
+    );
+}
+
+#[test]
+fn rejected_writes_emit_no_events() {
+    let s = Setup::new();
+    s.register(7);
+    // A decreasing total is refused, so nothing is published.
+    s.client.update_subscription(&7, &100, &STATUS_ACTIVE);
+    assert!(s.client.try_update_subscription(&7, &50, &STATUS_ACTIVE).is_err());
+    assert!(s.env.events().all().filter_by_contract(&s.client.address) == std::vec::Vec::new());
+}
+
+#[test]
+fn stats_survive_seven_days_without_writes() {
+    const DAY_IN_LEDGERS: u32 = 17_280;
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    s.client.update_subscription(&2, &300, &STATUS_ACTIVE);
+    let before = s.stats();
+
+    let now = s.env.ledger().sequence();
+    s.env.ledger().set_sequence_number(now + 7 * DAY_IN_LEDGERS);
+
+    // Stats must live in persistent storage, not in the instance entry whose
+    // 7-day TTL is what this change is protecting against.
+    s.env.as_contract(&s.client.address, || {
+        let key = crate::storage::DataKey::Stats;
+        assert!(s.env.storage().persistent().has(&key));
+        assert!(!s.env.storage().instance().has(&key));
+    });
+
+    assert_eq!(s.stats(), before);
+    assert_eq!(s.stats().total_subscriptions, 2);
+    assert_eq!(s.stats().active_subscriptions, 2);
+    assert_eq!(s.stats().total_charged_volume, 300);
+}
+
+#[test]
+fn registration_stores_the_payment_token() {
+    let s = Setup::new();
+    s.register(1);
+    assert_eq!(s.client.get_subscription_record(&1).token, s.token);
+}
+
+#[test]
+fn records_keep_their_own_token_through_updates() {
+    let s = Setup::new();
+    let other_token = Address::generate(&s.env);
+    s.register(1);
+    s.client
+        .register_subscription(&2, &s.subscriber, &s.merchant, &other_token);
+
+    s.client.update_subscription(&1, &50, &STATUS_ACTIVE);
+    s.client.update_subscription(&2, &75, &STATUS_PAUSED);
+
+    assert_eq!(s.client.get_subscription_record(&1).token, s.token);
+    assert_eq!(s.client.get_subscription_record(&2).token, other_token);
 }

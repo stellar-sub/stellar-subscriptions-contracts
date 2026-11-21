@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Option, String};
+use soroban_sdk::{contracttype, Address, String};
 
 /// A merchant's reusable billing terms. Subscribers subscribe to a plan and
 /// choose their own cap; `default_cap` is only a suggestion.

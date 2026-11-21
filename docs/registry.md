@@ -32,6 +32,7 @@ pub struct SubscriptionRecord {
     pub id: u64,
     pub subscriber: Address,
     pub merchant: Address,
+    pub token: Address,
     pub total_charged: i128,
     pub status: u32,                 // 0 Active, 1 Paused, 2 Cancelled, 3 Exhausted
 }
@@ -43,8 +44,10 @@ Each successful write emits exactly one event. A rejected call emits nothing.
 
 | Event | Emitted by | Data |
 |---|---|---|
-| `Registered` | `register_subscription` | `subscription_id`, `total_subscriptions` (new total) |
-| `Updated` | `update_subscription` | `subscription_id`, `total_charged`, `status` (new values) |
+| `subscription_registered` | `register_subscription` | topics: `subscription_id`, `subscriber`, `merchant` |
+| `subscription_updated` | `update_subscription` | topic: `subscription_id`; data: `total_charged`, `status` (new values) |
+
+See [events.md](events.md#registry-contract) for the full field layout.
 
 Indexers can follow these events instead of polling `get_stats`.
 
@@ -55,12 +58,12 @@ Indexers can follow these events instead of polling `get_stats`.
 | `initialize(admin)` | admin | Once. |
 | `set_writers(admin, subscription_contract, plan_contract)` | admin | Once. |
 | `register_plan(plan_id)` | plan contract | Each plan counted once. |
-| `register_subscription(subscription_id, subscriber, merchant)` | subscription contract | Starts Active. |
+| `register_subscription(subscription_id, subscriber, merchant, token)` | subscription contract | Starts Active. `token` is stored on the record. |
 | `update_subscription(subscription_id, total_charged, status)` | subscription contract | See rules below. |
 | `get_stats() -> RegistryStats` | anyone | |
 | `get_subscription_record(subscription_id)` | anyone | |
-| `get_all_subscriptions() -> Vec<u64>` | anyone | Oldest first. |
-| `get_all_subscriptions_page(page, limit) -> Result<Vec<u64>, Error>` | anyone | Paginated, oldest first. |
+| `get_all_subscriptions() -> Vec<u64>` | anyone | **Deprecated.** Oldest first. O(n): reads every id in one call. Prefer the paged form. |
+| `get_all_subscriptions_page(start, limit) -> Result<Vec<u64>, Error>` | anyone | Up to `limit` ids from index `start`, oldest first. `limit` ≤ `MAX_PAGE_SIZE` (100) or `PageSizeTooLarge`. |
 | `get_active_subscriptions() -> Vec<u64>` | anyone | Oldest first. |
 | `get_active_subscriptions_page(page, limit) -> Result<Vec<u64>, Error>` | anyone | Paginated, oldest first. |
 | `get_writers() -> Writers` | anyone | |

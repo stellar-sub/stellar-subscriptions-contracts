@@ -156,6 +156,7 @@ impl SubscriptionContract {
                 &id,
                 &sub.subscriber,
                 &sub.merchant,
+                &sub.token,
             );
             if !matches!(registered, Ok(Ok(()))) {
                 return Err(Error::RegistryUpdateFailed);

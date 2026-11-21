@@ -49,6 +49,7 @@ proptest! {
         let plans = Address::generate(&env);
         let subscriber = Address::generate(&env);
         let merchant = Address::generate(&env);
+        let token = Address::generate(&env);
         let client = RegistryContractClient::new(&env, &env.register(RegistryContract, ()));
         client.initialize(&admin);
         client.set_writers(&admin, &subs, &plans);
@@ -57,7 +58,7 @@ proptest! {
             match op {
                 Op::Register => {
                     let id = client.get_all_subscriptions().len() as u64 + 1;
-                    client.register_subscription(&id, &subscriber, &merchant);
+                    client.register_subscription(&id, &subscriber, &merchant, &token);
                 }
                 Op::Update { target, delta, status } => {
                     let count = client.get_all_subscriptions().len() as u64;

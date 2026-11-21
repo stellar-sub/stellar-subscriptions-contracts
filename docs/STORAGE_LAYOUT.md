@@ -6,7 +6,7 @@ This document describes the complete storage layout for all three contracts in t
 
 | Contract | Instance Keys | Persistent Keys |
 |----------|--------------|-----------------|
-| **registry** | Admin, Writers, Stats | Record(u64), AllSubscriptions, Plan(u64) |
+| **registry** | Admin, Writers | Stats, Record(u64), AllSubscriptions, Plan(u64) |
 | **subscription** | Admin, NextId, PlanContract, Registry | Sub(u64), BySubscriber(Address), ByMerchant(Address) |
 | **plan** | Admin, NextId, Registry | Plan(u64), ByMerchant(Address), AllPlans |
 
