@@ -292,6 +292,7 @@ fn a_transfer_from_error_causes_charge_to_return_transfer_failed() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
 
     // Snapshot everything charge touches before arming.
@@ -318,6 +319,7 @@ fn a_transfer_from_error_leaves_cap_schedule_and_status_unchanged() {
         &AMOUNT,
         &INTERVAL,
         &CAP,
+        &0,
         &0,
     );
 

@@ -21,6 +21,29 @@ pub enum SubStatus {
     MerchantEnded = 4,
 }
 
+/// Why a charge would succeed or be refused right now, as reported by
+/// `charge_status`. Agrees with `is_chargeable`: `Chargeable` exactly when
+/// `is_chargeable` returns true.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ChargeStatus {
+    /// Every check passes; `charge` would succeed (barring the token).
+    Chargeable = 0,
+    /// The current ledger is before `next_charge_ledger`.
+    TooEarly = 1,
+    /// The subscription is paused.
+    Paused = 2,
+    /// The subscription has been cancelled.
+    Cancelled = 3,
+    /// The merchant ended the subscription.
+    MerchantEnded = 4,
+    /// `total_charged` has already reached `total_cap`.
+    Exhausted = 5,
+    /// One more period would push `total_charged` past `total_cap`.
+    CapWouldBeExceeded = 6,
+}
+
 impl SubStatus {
     /// Cancelled, MerchantEnded, and Exhausted are terminal; nothing moves a
     /// subscription out of them.

@@ -96,6 +96,83 @@ fn cancel_emits_cancelled_with_the_unused_cap() {
 }
 
 #[test]
+fn cancel_reports_the_exact_unused_cap_after_a_known_number_of_charges() {
+    let s = Setup::new();
+    let id = s.subscribe_with(60, INTERVAL, 300);
+    s.client.charge(&s.merchant, &id);
+    s.advance(INTERVAL);
+    s.client.charge(&s.merchant, &id);
+    s.client.cancel(&s.subscriber, &id);
+    assert_only_event(
+        &s,
+        Cancelled {
+            subscription_id: id,
+            subscriber: s.subscriber.clone(),
+            total_charged: 120,
+            unused_cap: 180,
+            allowance_updated: true,
+            registry_updated: true,
+        },
+    );
+}
+
+#[test]
+fn cancel_with_no_charges_reports_the_full_cap_as_unused() {
+    let s = Setup::new();
+    let id = s.subscribe_with(AMOUNT, INTERVAL, 100);
+    s.client.cancel(&s.subscriber, &id);
+    assert_only_event(
+        &s,
+        Cancelled {
+            subscription_id: id,
+            subscriber: s.subscriber.clone(),
+            total_charged: 0,
+            unused_cap: 100,
+            allowance_updated: true,
+            registry_updated: true,
+        },
+    );
+}
+
+#[test]
+fn resumed_event_reports_now_when_resumed_after_the_due_date_has_passed() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    s.client.pause(&s.subscriber, &id);
+    // Original next_charge_ledger is start + INTERVAL. Resume well after it.
+    s.set_ledger(s.sub(id).next_charge_ledger + 10);
+    let resumed_at = s.ledger();
+    s.client.resume(&s.subscriber, &id);
+    assert_only_event(
+        &s,
+        Resumed {
+            subscription_id: id,
+            subscriber: s.subscriber.clone(),
+            next_charge_ledger: resumed_at,
+        },
+    );
+}
+
+#[test]
+fn resumed_event_keeps_the_original_due_date_when_resumed_early() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    let original_next = s.sub(id).next_charge_ledger;
+    s.client.pause(&s.subscriber, &id);
+    // Resume before the original due date.
+    s.set_ledger(original_next - 10);
+    s.client.resume(&s.subscriber, &id);
+    assert_only_event(
+        &s,
+        Resumed {
+            subscription_id: id,
+            subscriber: s.subscriber.clone(),
+            next_charge_ledger: original_next,
+        },
+    );
+}
+
+#[test]
 fn pause_emits_paused() {
     let s = Setup::new();
     let id = s.subscribe();

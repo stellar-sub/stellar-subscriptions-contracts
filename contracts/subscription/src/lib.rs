@@ -13,7 +13,7 @@ mod storage;
 mod types;
 
 pub use errors::Error;
-pub use types::{SubStatus, Subscription};
+pub use types::{ChargeStatus, SubStatus, Subscription};
 
 use events::{Cancelled, Charged, Paused, Resumed, Subscribed};
 use interfaces::{PlanClient, RegistryClient};
@@ -100,6 +100,7 @@ impl SubscriptionContract {
         interval_ledgers: u32,
         total_cap: i128,
         plan_id: u64,
+        trial_ledgers: u32,
     ) -> Result<u64, Error> {
         storage::read_admin(&env)?;
         subscriber.require_auth();
@@ -140,9 +141,10 @@ impl SubscriptionContract {
             total_charged: 0,
             start_ledger: now,
             last_charge_ledger: 0,
-            next_charge_ledger: now,
+            next_charge_ledger: now.saturating_add(trial_ledgers),
             status: SubStatus::Active,
             plan_id,
+            trial_ledgers,
         };
         storage::write_sub(&env, &sub);
         storage::push_index(&env, DataKey::BySubscriber(sub.subscriber.clone()), id);
@@ -202,6 +204,7 @@ impl SubscriptionContract {
             SubStatus::Paused => return Err(Error::SubscriptionPaused),
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+            SubStatus::MerchantEnded => return Err(Error::SubscriptionMerchantEnded),
         }
 
         // INTERVAL.
@@ -250,6 +253,7 @@ impl SubscriptionContract {
         Charged {
             subscription_id,
             merchant: sub.merchant,
+            token: sub.token,
             amount: sub.amount_per_period,
             total_charged: sub.total_charged,
             next_charge_ledger: sub.next_charge_ledger,
@@ -289,6 +293,7 @@ impl SubscriptionContract {
             SubStatus::Active | SubStatus::Paused => {}
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+            SubStatus::MerchantEnded => return Err(Error::SubscriptionMerchantEnded),
         }
 
         sub.status = SubStatus::Cancelled;
@@ -323,6 +328,7 @@ impl SubscriptionContract {
             SubStatus::Paused => return Err(Error::AlreadyPaused),
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+            SubStatus::MerchantEnded => return Err(Error::SubscriptionMerchantEnded),
         }
 
         sub.status = SubStatus::Paused;
@@ -350,6 +356,7 @@ impl SubscriptionContract {
             SubStatus::Active => return Err(Error::NotPaused),
             SubStatus::Cancelled => return Err(Error::SubscriptionCancelled),
             SubStatus::Exhausted => return Err(Error::SubscriptionExhausted),
+            SubStatus::MerchantEnded => return Err(Error::SubscriptionMerchantEnded),
         }
 
         let now = env.ledger().sequence();
@@ -411,6 +418,27 @@ impl SubscriptionContract {
             Some(total) => total <= sub.total_cap,
             None => false,
         })
+    }
+
+    /// Why `charge` would succeed or fail right now. Agrees with
+    /// `is_chargeable`: `Chargeable` exactly when that returns true.
+    pub fn charge_status(env: Env, subscription_id: u64) -> Result<ChargeStatus, Error> {
+        let sub = storage::read_sub(&env, subscription_id)?;
+        match sub.status {
+            SubStatus::Paused => return Ok(ChargeStatus::Paused),
+            SubStatus::Cancelled => return Ok(ChargeStatus::Cancelled),
+            SubStatus::Exhausted => return Ok(ChargeStatus::Exhausted),
+            SubStatus::MerchantEnded => return Ok(ChargeStatus::MerchantEnded),
+            SubStatus::Active => {}
+        }
+        let now = env.ledger().sequence();
+        if now < sub.next_charge_ledger {
+            return Ok(ChargeStatus::TooEarly);
+        }
+        match sub.total_charged.checked_add(sub.amount_per_period) {
+            Some(total) if total <= sub.total_cap => Ok(ChargeStatus::Chargeable),
+            _ => Ok(ChargeStatus::CapWouldBeExceeded),
+        }
     }
 
     /// Cap that can still ever be charged: `total_cap - total_charged` while

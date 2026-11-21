@@ -59,4 +59,6 @@ pub enum Error {
     RegistryUpdateFailed = 26,
     /// A batch holds more ids than `MAX_BATCH`.
     BatchTooLarge = 27,
+    /// The merchant ended the subscription. Final: no further charges, ever.
+    SubscriptionMerchantEnded = 28,
 }

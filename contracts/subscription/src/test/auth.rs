@@ -257,6 +257,7 @@ fn subscribe_succeeds_with_only_the_subscribers_signature() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
 
     let auths = s.env.auths();

@@ -75,6 +75,7 @@ fn ids_are_sequential_and_unique_across_many_subscribers() {
             &INTERVAL,
             &(12 * amount),
             &0,
+            &0,
         );
         created.push((id, subscriber, merchant, amount));
     }

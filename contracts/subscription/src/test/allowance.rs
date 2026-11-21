@@ -271,6 +271,7 @@ fn cancelling_in_one_token_leaves_the_allowance_for_another_token_untouched() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
     let b = TokenClient::new(&s.env, &other_token);
     assert_eq!(s.allowance(), CAP);
@@ -348,6 +349,7 @@ fn allowance_recomputation_succeeds_with_sixty_open_subscriptions() {
             &AMOUNT,
             &INTERVAL,
             &CAP,
+            &0,
             &0,
         );
         ids.push(id);

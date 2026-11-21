@@ -21,6 +21,7 @@ fn subscribe_for(s: &Setup, merchant: &Address) -> u64 {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     )
 }
 

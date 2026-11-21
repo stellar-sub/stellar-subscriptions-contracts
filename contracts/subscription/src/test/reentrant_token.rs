@@ -138,6 +138,7 @@ fn token_callback_cannot_reenter_charge_or_double_charge() {
         &INTERVAL,
         &CAP,
         &0,
+        &0,
     );
     let nested_id = subscription_contract.subscribe(
         &subscriber,
@@ -146,6 +147,7 @@ fn token_callback_cannot_reenter_charge_or_double_charge() {
         &AMOUNT,
         &INTERVAL,
         &CAP,
+        &0,
         &0,
     );
     token.configure(&subscription_contract.address, &merchant, &nested_id);

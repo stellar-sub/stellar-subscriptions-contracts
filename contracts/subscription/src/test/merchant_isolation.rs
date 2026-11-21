@@ -42,6 +42,7 @@ proptest! {
             &INTERVAL,
             &CAP,
             &0,
+            &0,
         );
 
         for step in steps {

@@ -278,6 +278,7 @@ proptest! {
             &INTERVAL,
             &cap_b,
             &0,
+            &0,
         );
 
         let mut st_a = SubState::default();

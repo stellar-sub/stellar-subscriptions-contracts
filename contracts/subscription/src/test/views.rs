@@ -6,6 +6,39 @@ use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
 use crate::{Error, SubStatus};
 
 #[test]
+fn get_by_subscriber_preserves_creation_order_with_interleaved_subscribers() {
+    let s = Setup::new();
+    let other_subscriber = Address::generate(&s.env);
+    s.mint(&other_subscriber, 1_000_000);
+
+    s.set_ledger(100);
+    let first = s.subscribe();
+
+    s.set_ledger(150);
+    // Interleaved: a different subscriber creates one in between.
+    s.client.subscribe(
+        &other_subscriber,
+        &s.merchant,
+        &s.token.address,
+        &AMOUNT,
+        &INTERVAL,
+        &CAP,
+        &0,
+        &0,
+    );
+
+    s.set_ledger(200);
+    let second = s.subscribe();
+
+    s.set_ledger(300);
+    let third = s.subscribe();
+
+    let mine = s.client.get_by_subscriber(&s.subscriber);
+    let ids: soroban_sdk::Vec<u64> = mine.iter().map(|sub| sub.id).collect();
+    assert_eq!(ids, soroban_sdk::vec![&s.env, first, second, third]);
+}
+
+#[test]
 fn remaining_cap_and_is_chargeable_track_the_lifecycle() {
     let s = Setup::new();
     let id = s.subscribe();
