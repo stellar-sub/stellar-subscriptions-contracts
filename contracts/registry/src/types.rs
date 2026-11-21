@@ -32,6 +32,20 @@ pub struct RegistryStats {
     pub total_charged_volume: i128,
 }
 
+/// Per-merchant counters.
+// See the `#[allow(missing_docs)]` note on `RegistryStats` above.
+#[allow(missing_docs)]
+#[contracttype]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MerchantStats {
+    /// Every subscription ever registered to this merchant.
+    pub subscriptions: u64,
+    /// Subscriptions to this merchant whose last reported status is Active.
+    pub active_subscriptions: u64,
+    /// Sum of every reported charge to this merchant, in raw units.
+    pub total_charged_volume: i128,
+}
+
 /// The contracts allowed to write to the registry.
 // See the `#[allow(missing_docs)]` note on `RegistryStats` above.
 #[allow(missing_docs)]

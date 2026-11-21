@@ -27,14 +27,14 @@ const PERSISTENT_LIFETIME_THRESHOLD: u32 = PERSISTENT_BUMP_AMOUNT - DAY_IN_LEDGE
 `contracts/registry/src/storage.rs` and `contracts/plan/src/storage.rs`.)
 
 - **Instance storage** holds data there is only one of per contract:
-  `Admin`, `NextId`, linked contract addresses, `Writers`, `Stats`. It is
+  `Admin`, `NextId`, linked contract addresses and `Writers`. It is
   bumped to live 7 days (`INSTANCE_BUMP_AMOUNT`) whenever
   `bump_instance(env)` runs, once its remaining TTL falls to
   `INSTANCE_LIFETIME_THRESHOLD` (6 days) or below.
 - **Persistent storage** holds per-id records that must survive
   independently of each other: a `Subscription`, a `Plan`, a
   `SubscriptionRecord`, and the index entries (`BySubscriber`, `ByMerchant`,
-  `AllSubscriptions`, `AllPlans`). Each is bumped to live 30 days
+  `AllSubscriptions`, `AllPlans`, and the registry's `Stats`). Each is bumped to live 30 days
   (`PERSISTENT_BUMP_AMOUNT`) via `bump_persistent(env, key)`, once its
   remaining TTL falls to `PERSISTENT_LIFETIME_THRESHOLD` (29 days) or below.
 

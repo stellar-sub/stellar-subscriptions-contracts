@@ -135,6 +135,7 @@ fn create_plan_stores_every_field() {
             default_cap: CAP,
             active: true,
             created_at: 1_000,
+            description: None,
         }
     );
 }
@@ -209,6 +210,16 @@ fn create_plan_rejects_a_zero_interval() {
 fn create_plan_rejects_a_default_cap_below_one_period() {
     let s = Setup::new();
     s.expect_create_err("Pro", AMOUNT, INTERVAL, AMOUNT - 1, Error::InvalidCap);
+}
+
+#[test]
+fn a_default_cap_that_is_not_a_whole_multiple_is_accepted() {
+    // amount 10, cap 15: one charge fits, the 5 left over can never be charged.
+    let s = Setup::new();
+    let id = s
+        .client
+        .create_plan(&s.merchant, &s.name("Pro"), &s.token, &10, &INTERVAL, &15);
+    assert_eq!(s.client.get_plan(&id).default_cap, 15);
 }
 
 #[test]

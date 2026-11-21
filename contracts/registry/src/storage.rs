@@ -20,7 +20,8 @@ pub enum DataKey {
     Admin,
     /// Instance: contracts allowed to write.
     Writers,
-    /// Instance: aggregate counters.
+    /// Persistent: aggregate counters. Kept out of instance storage so it
+    /// has its own TTL and is not tied to the instance's 7-day bump.
     Stats,
     /// Persistent: one subscription's record.
     Record(u64),
@@ -77,14 +78,20 @@ pub fn read_writers(env: &Env) -> Result<Writers, Error> {
 }
 
 pub fn read_stats(env: &Env) -> RegistryStats {
-    env.storage()
-        .instance()
-        .get(&DataKey::Stats)
-        .unwrap_or_default()
+    let key = DataKey::Stats;
+    match env.storage().persistent().get(&key) {
+        Some(stats) => {
+            bump_persistent(env, &key);
+            stats
+        }
+        None => RegistryStats::default(),
+    }
 }
 
 pub fn write_stats(env: &Env, stats: &RegistryStats) {
-    env.storage().instance().set(&DataKey::Stats, stats);
+    let key = DataKey::Stats;
+    env.storage().persistent().set(&key, stats);
+    bump_persistent(env, &key);
 }
 
 pub fn has_record(env: &Env, id: u64) -> bool {

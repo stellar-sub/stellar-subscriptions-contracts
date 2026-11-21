@@ -3,13 +3,13 @@ extern crate std;
 use core::fmt::Debug;
 
 use soroban_sdk::{
-    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    testutils::{storage::Persistent as _, Address as _, Ledger, MockAuth, MockAuthInvoke},
     Address, Env, IntoVal,
 };
 
 use crate::{
-    Error, RegistryContract, RegistryContractClient, RegistryStats, SubscriptionRecord,
-    STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
+    Error, MerchantStats, RegistryContract, RegistryContractClient, RegistryStats,
+    SubscriptionRecord, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
 };
 
 struct Setup {
@@ -324,6 +324,126 @@ fn only_the_plan_contract_can_register_plans() {
         .try_register_plan(&1);
     assert!(result.is_err());
     assert_eq!(s.stats().total_plans, 0);
+}
+
+#[test]
+fn merchant_stats_follow_register_charge_and_cancel() {
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    assert_eq!(
+        s.client.get_merchant_stats(&s.merchant),
+        MerchantStats {
+            subscriptions: 2,
+            active_subscriptions: 2,
+            total_charged_volume: 0,
+        }
+    );
+
+    s.client.update_subscription(&1, &100, &STATUS_ACTIVE);
+    s.client.update_subscription(&2, &50, &STATUS_PAUSED);
+    s.client.update_subscription(&1, &150, &STATUS_CANCELLED);
+
+    assert_eq!(
+        s.client.get_merchant_stats(&s.merchant),
+        MerchantStats {
+            subscriptions: 2,
+            active_subscriptions: 0,
+            total_charged_volume: 200,
+        }
+    );
+}
+
+#[test]
+fn merchant_stats_are_kept_per_merchant() {
+    let s = Setup::new();
+    let other = Address::generate(&s.env);
+    s.register(1);
+    s.client.register_subscription(&2, &s.subscriber, &other);
+
+    assert_eq!(s.client.get_merchant_stats(&s.merchant).subscriptions, 1);
+    assert_eq!(s.client.get_merchant_stats(&other).subscriptions, 1);
+    let stranger = Address::generate(&s.env);
+    assert_eq!(
+        s.client.get_merchant_stats(&stranger),
+        MerchantStats::default()
+    );
+}
+
+#[test]
+fn active_pages_walk_the_whole_index() {
+    let s = Setup::new();
+    for id in 1..=7u64 {
+        s.register(id);
+    }
+    s.client.update_subscription(&2, &0, &STATUS_PAUSED);
+    s.client.update_subscription(&5, &0, &STATUS_CANCELLED);
+
+    let mut walked = std::vec::Vec::new();
+    for start in (0..7u32).step_by(3) {
+        walked.extend(ids(s.client.get_active_subscriptions_page(&start, &3)));
+    }
+    assert_eq!(walked, [1, 3, 4, 6, 7]);
+    assert_eq!(walked, ids(s.client.get_active_subscriptions()));
+}
+
+#[test]
+fn active_page_limit_boundaries() {
+    let s = Setup::new();
+    s.register(1);
+    assert_eq!(ids(s.client.get_active_subscriptions_page(&0, &1)), [1]);
+    assert_eq!(ids(s.client.get_active_subscriptions_page(&0, &1000)), [1]);
+    expect_err(
+        s.client.try_get_active_subscriptions_page(&0, &0),
+        Error::PageSizeTooLarge,
+    );
+    expect_err(
+        s.client.try_get_active_subscriptions_page(&0, &1001),
+        Error::PageSizeTooLarge,
+    );
+}
+
+#[test]
+fn active_page_past_the_end_is_empty() {
+    let s = Setup::new();
+    s.register(1);
+    assert!(ids(s.client.get_active_subscriptions_page(&5, &10)).is_empty());
+    assert!(ids(s.client.get_active_subscriptions_page(&u32::MAX, &1000)).is_empty());
+}
+
+#[test]
+fn stats_are_still_correct_after_seven_days_without_a_write() {
+    let s = Setup::new();
+    s.register(1);
+    s.client.update_subscription(&1, &100, &STATUS_ACTIVE);
+    s.client.register_plan(&1);
+
+    // One week of ledgers, about 5 seconds each, with no writes in between.
+    let now = s.env.ledger().sequence();
+    s.env.ledger().set_sequence_number(now + 7 * 17_280 + 1);
+
+    assert_eq!(
+        s.stats(),
+        RegistryStats {
+            total_plans: 1,
+            total_subscriptions: 1,
+            active_subscriptions: 1,
+            total_charged_volume: 100,
+        }
+    );
+}
+
+#[test]
+fn stats_live_in_persistent_storage_with_a_week_of_ttl() {
+    let s = Setup::new();
+    s.register(1);
+    let ttl = s.env.as_contract(&s.client.address, || {
+        s.env
+            .storage()
+            .persistent()
+            .get_ttl(&crate::storage::DataKey::Stats)
+    });
+    assert!(ttl >= 7 * 17_280, "stats TTL is only {ttl} ledgers");
 }
 
 #[test]

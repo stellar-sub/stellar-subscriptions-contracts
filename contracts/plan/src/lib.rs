@@ -163,6 +163,7 @@ impl PlanContract {
             default_cap,
             active: true,
             created_at: env.ledger().sequence(),
+            description: None,
         };
         storage::write_plan(&env, &plan);
         storage::push_index(&env, DataKey::ByMerchant(plan.merchant.clone()), id);

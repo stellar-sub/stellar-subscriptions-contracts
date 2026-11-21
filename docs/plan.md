@@ -53,6 +53,31 @@ field name, so **field names must not change**.
 This is covered by `deactivating_a_plan_leaves_existing_subscriptions_chargeable`
 in the subscription crate's integration tests.
 
+## `default_cap` and whole periods
+
+`default_cap` is a suggestion that subscribers copy into their own
+`total_cap`. It only has to be at least one period's charge (`InvalidCap`
+otherwise). It does **not** have to be a whole multiple of
+`amount_per_period`, and the plan contract does not reject a cap that is not.
+
+If it is not a multiple, the remainder can never be charged. Worked example,
+with `amount_per_period = 10` and `default_cap = 15`:
+
+| Charge | `total_charged` after | Result |
+|---|---|---|
+| 1st | 10 | Accepted (10 <= 15). |
+| 2nd | 20 | Rejected with `CapExceeded` (20 > 15). |
+
+The subscription stays `Active` with 5 unchargeable. A subscriber who copies
+the suggested cap gets exactly one period's charge from it. Merchants who want
+the whole cap used should publish a `default_cap` that is a multiple of
+`amount_per_period` (for example 20 or 30). The subscription contract's rules
+are described in `docs/subscription.md`, in the paragraph that begins "A cap
+that is not a whole number of periods is allowed".
+
+This is covered by `a_default_cap_that_is_not_a_whole_multiple_is_accepted`
+in the plan crate's tests.
+
 ## Events
 
 | Event | Topics | Data |
