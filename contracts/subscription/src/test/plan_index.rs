@@ -37,6 +37,7 @@ fn subscribe_to(s: &Setup, plan_id: u64) -> u64 {
         &INTERVAL,
         &CAP,
         &plan_id,
+        &0u32,
     )
 }
 
@@ -103,4 +104,57 @@ fn a_plan_with_no_subscriptions_counts_zero() {
     let unused = create_plan(&s, &plans);
     assert_eq!(s.client.count_by_plan(&unused), 0);
     assert!(s.client.get_by_plan_page(&unused, &0, &10).is_empty());
+}
+
+#[test]
+fn plan_with_active_and_cancelled_subscriptions_returns_all_ids() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+
+    // Two active + one that gets cancelled.
+    let a = subscribe_to(&s, plan);
+    let b = subscribe_to(&s, plan);
+    let c = subscribe_to(&s, plan);
+    s.client.cancel(&s.subscriber, &c);
+
+    // All three are still in the plan index (the index is append-only;
+    // callers filter by status if they need only active ones).
+    assert_eq!(s.client.count_by_plan(&plan), 3);
+    let ids: std::vec::Vec<u64> = s
+        .client
+        .get_by_plan_page(&plan, &0, &10)
+        .iter()
+        .map(|sub| sub.id)
+        .collect();
+    assert_eq!(ids, std::vec![a, b, c]);
+}
+
+#[test]
+fn get_by_plan_for_plan_with_no_subscriptions_returns_empty_vec() {
+    let (s, plans) = with_plans();
+    let empty_plan = create_plan(&s, &plans);
+
+    // No subscriptions have been created for this plan.
+    assert_eq!(s.client.count_by_plan(&empty_plan), 0);
+    assert!(s
+        .client
+        .get_by_plan_page(&empty_plan, &0, &10)
+        .is_empty());
+}
+
+#[test]
+fn ad_hoc_subscription_does_not_appear_in_any_get_by_plan_result() {
+    let (s, plans) = with_plans();
+    let plan = create_plan(&s, &plans);
+
+    // Create an ad-hoc subscription (plan_id = 0) alongside a plan subscription.
+    let _adhoc = s.subscribe();
+    let _plan_sub = subscribe_to(&s, plan);
+
+    // The ad-hoc subscription is not in plan=0's index (there is no such index).
+    assert_eq!(s.client.count_by_plan(&0), 0);
+    assert!(s.client.get_by_plan_page(&0, &0, &10).is_empty());
+
+    // And not in the real plan's index either — only the plan subscription is.
+    assert_eq!(s.client.count_by_plan(&plan), 1);
 }
