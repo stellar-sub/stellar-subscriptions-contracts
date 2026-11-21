@@ -7,6 +7,7 @@ mod invariant_revocation;
 mod fuzz;
 
 mod allowance;
+mod associate_plan;
 mod auth;
 mod batch_charge;
 mod charge;
@@ -15,6 +16,8 @@ mod events;
 mod hostile_token;
 mod integration;
 mod interval_limits;
+mod new_features;
 mod simulation_drift;
+mod status_sync;
 mod validation;
 mod views;

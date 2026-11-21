@@ -91,6 +91,17 @@ pub struct Resumed {
     pub next_charge_ledger: u32,
 }
 
+/// A subscriber retroactively linked an ad-hoc subscription to a plan.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanAssociated {
+    #[topic]
+    pub subscription_id: u64,
+    #[topic]
+    pub subscriber: Address,
+    pub plan_id: u64,
+}
+
 /// A merchant ended a subscription. Final.
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]

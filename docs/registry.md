@@ -37,6 +37,28 @@ pub struct SubscriptionRecord {
 }
 ```
 
+## Per-merchant statistics
+
+```rust
+pub struct MerchantStats {
+    pub total_subscriptions: u64,    // every subscription ever registered for this merchant
+    pub active_subscriptions: u64,   // last reported status is Active, for this merchant
+    pub total_charged_volume: i128,  // sum of charges for this merchant, raw units, all tokens
+}
+```
+
+Each field counts the same way as its `RegistryStats` counterpart, but
+scoped to one merchant's `Address` instead of the whole registry.
+`total_subscriptions` and `total_charged_volume` only increase; they are
+`u64`/`i128` counters and will panic on overflow (checked arithmetic), which
+in practice requires an astronomically large number of subscriptions or
+raw-unit charges. `active_subscriptions` moves up and down as subscriptions
+transition into and out of Active.
+
+`get_merchant_stats(merchant: Address) -> MerchantStats` is callable by
+anyone and returns a zero-valued `MerchantStats` for a merchant that has
+never had a subscription registered against it — it never errors.
+
 ## Events
 
 Each successful write emits exactly one event. A rejected call emits nothing.
@@ -58,6 +80,7 @@ Indexers can follow these events instead of polling `get_stats`.
 | `register_subscription(subscription_id, subscriber, merchant)` | subscription contract | Starts Active. |
 | `update_subscription(subscription_id, total_charged, status)` | subscription contract | See rules below. |
 | `get_stats() -> RegistryStats` | anyone | |
+| `get_merchant_stats(merchant) -> MerchantStats` | anyone | Zero-valued if never indexed. |
 | `get_subscription_record(subscription_id)` | anyone | |
 | `get_all_subscriptions() -> Vec<u64>` | anyone | Oldest first. |
 | `get_all_subscriptions_page(page, limit) -> Result<Vec<u64>, Error>` | anyone | Paginated, oldest first. |

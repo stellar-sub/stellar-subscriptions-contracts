@@ -12,9 +12,21 @@ deployed instance.
   (`contracts/*/src/errors.rs`) are append-only: a new failure can be added
   with the next unused discriminant. Existing codes are never renumbered or
   reused, so a client matching on a numeric code keeps working.
-- **New `SubStatus` discriminants** would follow the same append-only rule,
-  though none have been added since `Active = 0`, `Paused = 1`,
-  `Cancelled = 2`, `Exhausted = 3` were fixed (`contracts/subscription/src/types.rs`).
+- **New `SubStatus` discriminants** would follow the same append-only rule.
+  Current values: `Active = 0`, `Paused = 1`, `Cancelled = 2`, `Exhausted = 3`,
+  `MerchantEnded = 4` (`contracts/subscription/src/types.rs`).
+
+  **These discriminants must stay numerically identical to the registry's
+  `STATUS_*` constants** (`contracts/registry/src/types.rs`:
+  `STATUS_ACTIVE`, `STATUS_PAUSED`, `STATUS_CANCELLED`, `STATUS_EXHAUSTED`,
+  `STATUS_MERCHANT_ENDED`). The registry stores a subscription's status as a
+  bare `u32` on `SubscriptionRecord` — it has no reference to the
+  `SubStatus` enum itself, so nothing at compile time ties the two sides
+  together. If one side is ever renumbered without updating the other, the
+  registry's indexed status for every subscription silently becomes wrong
+  with no error anywhere. `contracts/subscription/src/test/status_sync.rs`
+  asserts the two sides match for all five statuses; that test must keep
+  passing whenever either enum changes.
 - **New events or new data fields on an event**, as long as existing topics
   and existing fields keep their meaning.
 - **New read-only view functions.**

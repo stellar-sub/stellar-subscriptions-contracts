@@ -123,4 +123,21 @@ jobs:
       #   make wasm && scripts/check-wasm-size.sh --update
       # and commit the updated file with a PR comment explaining why.
       - name: Check wasm size budgets
-        run: bash scripts/check-wasm-size.sh
+        run: |
+          set +e
+          bash scripts/check-wasm-size.sh
+          STATUS=$?
+          bash scripts/check-wasm-size.sh --json > wasm-sizes.json
+          {
+            echo "### Wasm size report"
+            echo '```json'
+            cat wasm-sizes.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $STATUS
+
+      - name: Upload wasm size artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-sizes
+          path: wasm-sizes.json

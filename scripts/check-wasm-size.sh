@@ -7,6 +7,7 @@
 # Usage:
 #   scripts/check-wasm-size.sh              # check mode (default)
 #   scripts/check-wasm-size.sh --update     # rewrite budget file with current sizes
+#   scripts/check-wasm-size.sh --json       # check mode, machine-readable JSON output
 #
 # The wasm files must already exist at:
 #   target/wasm32v1-none/release/<name>.wasm
@@ -18,6 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUDGET_FILE="$REPO_ROOT/.github/wasm-size-budget.json"
 WASM_DIR="$REPO_ROOT/target/wasm32v1-none/release"
+JSON_MODE=0
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,6 +36,9 @@ require_cmd jq
 UPDATE_MODE=0
 if [[ "${1:-}" == "--update" ]]; then
   UPDATE_MODE=1
+fi
+if [[ "${1:-}" == "--json" ]]; then
+  JSON_MODE=1
 fi
 
 # ---------------------------------------------------------------------------
@@ -74,8 +79,12 @@ fi
 # ---------------------------------------------------------------------------
 
 PASS=1
-printf "\n%-20s %12s %12s %10s\n" "CONTRACT" "ACTUAL (B)" "BUDGET (B)" "STATUS"
-printf "%s\n" "------------------------------------------------------------"
+JSON_ENTRIES=()
+
+if [[ $JSON_MODE -eq 0 ]]; then
+  printf "\n%-20s %12s %12s %10s\n" "CONTRACT" "ACTUAL (B)" "BUDGET (B)" "STATUS"
+  printf "%s\n" "------------------------------------------------------------"
+fi
 
 for contract in "${CONTRACTS[@]}"; do
   wasm_file="$WASM_DIR/${contract}.wasm"
@@ -91,14 +100,30 @@ for contract in "${CONTRACTS[@]}"; do
   if (( actual <= budget )); then
     status="OK"
     over=""
+    over_budget="false"
   else
     status="OVER BUDGET"
     over=" (+$(( actual - budget )) B)"
+    over_budget="true"
     PASS=0
   fi
 
-  printf "%-20s %12d %12d %10s%s\n" "$contract" "$actual" "$budget" "$status" "$over"
+  if [[ $JSON_MODE -eq 1 ]]; then
+    JSON_ENTRIES+=("$(jq -n \
+      --arg contract "$contract" \
+      --argjson size_bytes "$actual" \
+      --argjson budget_bytes "$budget" \
+      --argjson over_budget "$over_budget" \
+      '{contract: $contract, size_bytes: $size_bytes, budget_bytes: $budget_bytes, over_budget: $over_budget}')")
+  else
+    printf "%-20s %12d %12d %10s%s\n" "$contract" "$actual" "$budget" "$status" "$over"
+  fi
 done
+
+if [[ $JSON_MODE -eq 1 ]]; then
+  printf '%s\n' "${JSON_ENTRIES[@]}" | jq -s '.'
+  exit $(( PASS == 1 ? 0 : 1 ))
+fi
 
 printf "%s\n\n" "------------------------------------------------------------"
 
