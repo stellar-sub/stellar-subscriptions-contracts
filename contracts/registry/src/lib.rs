@@ -18,10 +18,13 @@ mod types;
 pub use errors::Error;
 pub use types::{
     RegistryStats, SubscriptionRecord, Writers, STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED,
-    STATUS_PAUSED,
+    STATUS_MERCHANT_ENDED, STATUS_PAUSED,
 };
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
+
+/// Version of this contract, bumped on each incompatible change.
+pub const VERSION: u32 = 1;
 
 /// The registry contract's entry point.
 // `contract` generates an undocumentable registration shim from this struct.
@@ -74,6 +77,11 @@ impl RegistryContract {
         storage::read_writers(&env)
     }
 
+    /// Version of this contract.
+    pub fn version() -> u32 {
+        VERSION
+    }
+
     /// Count a new plan. Only the plan contract may call this.
     pub fn register_plan(env: Env, plan_id: u64) -> Result<(), Error> {
         storage::read_writers(&env)?.plan_contract.require_auth();
@@ -107,12 +115,13 @@ impl RegistryContract {
             &SubscriptionRecord {
                 id: subscription_id,
                 subscriber,
-                merchant,
+                merchant: merchant.clone(),
                 total_charged: 0,
                 status: STATUS_ACTIVE,
             },
         );
         storage::push_id(&env, subscription_id);
+        storage::push_merchant_id(&env, &merchant, subscription_id);
 
         let mut stats = storage::read_stats(&env);
         stats.total_subscriptions = stats
@@ -143,7 +152,7 @@ impl RegistryContract {
         storage::read_writers(&env)?
             .subscription_contract
             .require_auth();
-        if status > STATUS_EXHAUSTED {
+        if status > STATUS_MERCHANT_ENDED {
             return Err(Error::InvalidStatus);
         }
         let mut record = storage::read_record(&env, subscription_id)?;
@@ -186,8 +195,34 @@ impl RegistryContract {
     }
 
     /// Current aggregate stats across every indexed plan and subscription.
+    ///
+    /// **Warning:** `total_charged_volume` sums raw token units across all
+    /// tokens with no normalization. Mixing tokens with different decimals
+    /// makes it meaningless as a currency amount. See `docs/registry.md`.
     pub fn get_stats(env: Env) -> RegistryStats {
         storage::read_stats(&env)
+    }
+
+    /// One page of a merchant's subscription records, oldest first.
+    ///
+    /// Returns up to `limit` records starting at position `start` in that
+    /// merchant's list. A merchant with no subscriptions, or a `start` past
+    /// the end, yields an empty list.
+    pub fn get_sub_records_by_merchant(
+        env: Env,
+        merchant: Address,
+        start: u32,
+        limit: u32,
+    ) -> Result<Vec<SubscriptionRecord>, Error> {
+        let ids = storage::read_merchant_ids(&env, &merchant);
+        let end = start.saturating_add(limit).min(ids.len());
+        let mut out = Vec::new(&env);
+        for i in start..end {
+            if let Some(id) = ids.get(i) {
+                out.push_back(storage::read_record(&env, id)?);
+            }
+        }
+        Ok(out)
     }
 
     /// Look up one subscription's indexed record by id.

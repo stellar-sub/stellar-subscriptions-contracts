@@ -9,7 +9,7 @@ use soroban_sdk::{
 
 use crate::{
     Error, RegistryContract, RegistryContractClient, RegistryStats, SubscriptionRecord,
-    STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_PAUSED,
+    STATUS_ACTIVE, STATUS_CANCELLED, STATUS_EXHAUSTED, STATUS_MERCHANT_ENDED, STATUS_PAUSED,
 };
 
 struct Setup {
@@ -204,6 +204,61 @@ fn charges_accumulate_volume_by_their_increase() {
 }
 
 #[test]
+fn volume_sums_raw_units_across_tokens_without_normalization() {
+    // The registry has no notion of token. A charge in one token and a
+    // charge in another both add their raw units to the same total.
+    let one_xlm: i128 = 10_000_000; // 1 XLM in stroops (7 decimals)
+    let one_usdc: i128 = 1_000_000; // 1 USDC in its smallest unit (6 decimals)
+    let s = Setup::new();
+    s.register(1);
+    s.register(2);
+    s.client.update_subscription(&1, &one_xlm, &STATUS_ACTIVE);
+    s.client.update_subscription(&2, &one_usdc, &STATUS_ACTIVE);
+    assert_eq!(s.stats().total_charged_volume, one_xlm + one_usdc);
+}
+
+#[test]
+fn merchant_records_are_listed_with_pagination() {
+    let s = Setup::new();
+    let other_merchant = Address::generate(&s.env);
+    for id in 1..=3u64 {
+        s.register(id);
+    }
+    s.client
+        .register_subscription(&4, &s.subscriber, &other_merchant);
+
+    let page = s.client.get_sub_records_by_merchant(&s.merchant, &0, &2);
+    let page_ids: std::vec::Vec<u64> = page.iter().map(|r| r.id).collect();
+    assert_eq!(page_ids, [1, 2]);
+
+    let rest = s.client.get_sub_records_by_merchant(&s.merchant, &2, &2);
+    let rest_ids: std::vec::Vec<u64> = rest.iter().map(|r| r.id).collect();
+    assert_eq!(rest_ids, [3]);
+
+    let other = s
+        .client
+        .get_sub_records_by_merchant(&other_merchant, &0, &10);
+    assert_eq!(other.len(), 1);
+    assert_eq!(other.get(0).unwrap().id, 4);
+}
+
+#[test]
+fn merchant_with_no_subscriptions_gets_an_empty_list() {
+    let s = Setup::new();
+    s.register(1);
+    let nobody = Address::generate(&s.env);
+    assert!(s
+        .client
+        .get_sub_records_by_merchant(&nobody, &0, &10)
+        .is_empty());
+    // A start past the end is also empty, not an error.
+    assert!(s
+        .client
+        .get_sub_records_by_merchant(&s.merchant, &5, &10)
+        .is_empty());
+}
+
+#[test]
 fn total_charged_can_never_decrease() {
     let s = Setup::new();
     s.register(1);
@@ -263,11 +318,35 @@ fn final_subscriptions_never_change_again() {
 }
 
 #[test]
+fn merchant_ended_is_an_accepted_status() {
+    let s = Setup::new();
+    s.register(1);
+    s.client.update_subscription(&1, &0, &STATUS_MERCHANT_ENDED);
+    let record = s.client.get_subscription_record(&1);
+    assert_eq!(record.status, STATUS_MERCHANT_ENDED);
+    assert_eq!(s.stats().active_subscriptions, 0);
+}
+
+#[test]
+fn merchant_ended_subscriptions_are_final() {
+    let s = Setup::new();
+    s.register(1);
+    s.client
+        .update_subscription(&1, &100, &STATUS_MERCHANT_ENDED);
+    expect_err(
+        s.client.try_update_subscription(&1, &500, &STATUS_ACTIVE),
+        Error::AlreadyFinal,
+    );
+    assert_eq!(s.client.get_subscription_record(&1).total_charged, 100);
+    assert_eq!(s.stats().total_charged_volume, 100);
+}
+
+#[test]
 fn unknown_status_codes_are_rejected() {
     let s = Setup::new();
     s.register(1);
     expect_err(
-        s.client.try_update_subscription(&1, &0, &4),
+        s.client.try_update_subscription(&1, &0, &5),
         Error::InvalidStatus,
     );
 }

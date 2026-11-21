@@ -29,6 +29,7 @@ This document describes the complete storage layout for all three contracts in t
 | `Record(u64)` | `SubscriptionRecord` | Individual subscription record by ID |
 | `AllSubscriptions` | `Vec<u64>` | Ordered list of all subscription IDs (oldest first) |
 | `Plan(u64)` | `bool` | Marks a plan ID as registered/counted (deduplication) |
+| `ByMerchant(Address)` | `Vec<u64>` | Subscription IDs for this merchant, oldest first |
 
 ### Collision Analysis
 
@@ -102,7 +103,7 @@ Each contract has its own storage namespace (keyed by contract address). Keys fr
 
 ### Discriminant Uniqueness Within Contract
 All `DataKey` enums use Rust's default discriminant assignment (0, 1, 2...). Within each contract:
-- Registry: 6 variants (Admin=0, Writers=1, Stats=2, Record=3, AllSubscriptions=4, Plan=5)
+- Registry: 7 variants (Admin=0, Writers=1, Stats=2, Record=3, AllSubscriptions=4, Plan=5, ByMerchant=6)
 - Subscription: 7 variants (Admin=0, NextId=1, Sub=2, BySubscriber=3, ByMerchant=4, PlanContract=5, Registry=6)
 - Plan: 6 variants (Admin=0, NextId=1, Plan=2, ByMerchant=3, AllPlans=4, Registry=5)
 

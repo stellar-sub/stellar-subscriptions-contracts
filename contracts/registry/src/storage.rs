@@ -2,7 +2,7 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 
 use crate::{
     errors::Error,
-    types::{MerchantStats, RegistryStats, SubscriptionRecord, Writers},
+    types::{RegistryStats, SubscriptionRecord, Writers},
 };
 
 const DAY_IN_LEDGERS: u32 = 17_280;
@@ -28,8 +28,8 @@ pub enum DataKey {
     AllSubscriptions,
     /// Persistent: marks a plan id as counted.
     Plan(u64),
-    /// Instance: per-merchant counters.
-    MerchantStats(Address),
+    /// Persistent: ids of a merchant's subscriptions, oldest first.
+    ByMerchant(Address),
 }
 
 pub fn bump_instance(env: &Env) {
@@ -138,15 +138,27 @@ pub fn mark_plan(env: &Env, plan_id: u64) -> bool {
     true
 }
 
-pub fn read_merchant_stats(env: &Env, merchant: &Address) -> MerchantStats {
-    env.storage()
-        .instance()
-        .get(&DataKey::MerchantStats(merchant.clone()))
-        .unwrap_or_default()
+/// Append a subscription id to its merchant's index.
+pub fn push_merchant_id(env: &Env, merchant: &Address, id: u64) {
+    let key = DataKey::ByMerchant(merchant.clone());
+    let mut ids: Vec<u64> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| Vec::new(env));
+    ids.push_back(id);
+    env.storage().persistent().set(&key, &ids);
+    bump_persistent(env, &key);
 }
 
-pub fn write_merchant_stats(env: &Env, merchant: &Address, stats: &MerchantStats) {
-    env.storage()
-        .instance()
-        .set(&DataKey::MerchantStats(merchant.clone()), stats);
+/// Every subscription id for a merchant, oldest first.
+pub fn read_merchant_ids(env: &Env, merchant: &Address) -> Vec<u64> {
+    let key = DataKey::ByMerchant(merchant.clone());
+    match env.storage().persistent().get(&key) {
+        Some(ids) => {
+            bump_persistent(env, &key);
+            ids
+        }
+        None => Vec::new(env),
+    }
 }

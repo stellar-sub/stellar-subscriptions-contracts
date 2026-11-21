@@ -22,7 +22,7 @@ pub enum Error {
     SubscriptionAlreadyRegistered = 6,
     /// No subscription is registered with that id.
     SubscriptionNotFound = 7,
-    /// Status must be 0 (Active) to 3 (Exhausted).
+    /// Status must be 0 (Active) to 4 (MerchantEnded).
     InvalidStatus = 8,
     /// total_charged only ever grows.
     ChargedDecreased = 9,

@@ -8,11 +8,13 @@ pub const STATUS_PAUSED: u32 = 1;
 pub const STATUS_CANCELLED: u32 = 2;
 /// Matches the subscription contract's `SubStatus::Exhausted` discriminant.
 pub const STATUS_EXHAUSTED: u32 = 3;
+/// Matches the subscription contract's `SubStatus::MerchantEnded` discriminant.
+pub const STATUS_MERCHANT_ENDED: u32 = 4;
 
-/// Whether a status code is final (`Cancelled` or `Exhausted`), meaning the
-/// record it belongs to can never change again.
+/// Whether a status code is final (`Cancelled`, `Exhausted` or
+/// `MerchantEnded`), meaning the record it belongs to can never change again.
 pub fn is_final(status: u32) -> bool {
-    status == STATUS_CANCELLED || status == STATUS_EXHAUSTED
+    status == STATUS_CANCELLED || status == STATUS_EXHAUSTED || status == STATUS_MERCHANT_ENDED
 }
 
 /// Aggregate counters across every indexed plan and subscription.
@@ -28,7 +30,11 @@ pub struct RegistryStats {
     pub total_subscriptions: u64,
     /// Subscriptions whose last reported status is Active.
     pub active_subscriptions: u64,
-    /// Sum of every reported charge, across all tokens, in raw units.
+    /// **Warning:** the sum of every reported charge across all tokens, in raw
+    /// token units. Tokens have different decimals and values, so this is not
+    /// a currency amount. 1 XLM and 1 USDC each add their raw units to this
+    /// total. Do not present it as a dollar or total-value figure; use
+    /// per-token totals from an indexer instead.
     pub total_charged_volume: i128,
 }
 
