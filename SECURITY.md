@@ -81,11 +81,15 @@ and changes nothing (tested).
   native test environment, and we have not shown that `cancel` survives it.
   Subscribers can avoid the question by using well-known tokens (such as the
   native asset). Treat this as an open item for an audit.
-- **Large histories cost more.** `get_by_subscriber`, `get_by_merchant`, and
-  the allowance recomputation in `subscribe`, `cancel` and `refresh_allowance`
-  walk every subscription that party has ever had. A party with a very large
-  number of subscriptions can hit the per-transaction resource limit. Use an
-  indexer on the emitted events for those.
+- **Large histories cost more.** `get_by_subscriber` and `get_by_merchant`
+  fail fast with `Error::ListTooLarge` once that party's index holds more
+  than `MAX_LIST_SIZE` (200) subscriptions, instead of walking an
+  unbounded list and risking the per-transaction resource limit. The
+  allowance recomputation in `subscribe`, `cancel` and `refresh_allowance`
+  still walks every subscription that party has ever had and has no such
+  cap. A party with a very large number of subscriptions can hit the
+  per-transaction resource limit there. Use an indexer on the emitted
+  events for those, or `get_subscription_summary` for a single id.
 - **Allowances expire.** The contract approves until the network's maximum
   entry lifetime (aligned to a ~1-day window so signatures stay valid between
   simulation and submission). Past that, charges fail with `TransferFailed`

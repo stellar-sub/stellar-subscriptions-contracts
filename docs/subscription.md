@@ -48,13 +48,39 @@ are never renumbered.
 | `initialize(admin)` | admin | Once. |
 | `set_plan_contract(admin, plan_contract)` | admin | Once, before the first subscription. |
 | `set_registry(admin, registry)` | admin | Once, before the first subscription. |
-| `subscribe(subscriber, merchant, token, amount_per_period, interval_ledgers, total_cap, plan_id) -> u64` | **subscriber** | Grants consent and approves the token allowance. |
+| `subscribe(subscriber, merchant, token, amount_per_period, interval_ledgers, total_cap, plan_id, trial_ledgers) -> u64` | **subscriber** | Grants consent and approves the token allowance. |
 | `charge(merchant, subscription_id)` | **merchant** | Must be the subscription's merchant. |
 | `cancel(subscriber, subscription_id)` | **subscriber** | Final. Can never be blocked by the token or registry. |
 | `pause(subscriber, subscription_id)` | **subscriber** | |
 | `resume(subscriber, subscription_id)` | **subscriber** | |
+| `merchant_end(merchant, subscription_id)` | **merchant** | Final. Mirrors `cancel`, initiated by the merchant. |
 | `refresh_allowance(subscriber, token) -> i128` | **subscriber** | Re-approves the outstanding cap with a fresh expiry. |
-| `get_subscription`, `is_chargeable`, `remaining_cap`, `get_by_subscriber`, `get_by_merchant`, `get_plan_contract`, `get_registry` | none | Views. |
+| `get_subscription`, `get_subscription_summary`, `is_chargeable`, `remaining_cap`, `get_by_subscriber`, `get_by_merchant`, `get_plan_contract`, `get_registry` | none | Views. |
+
+### `get_subscription_summary`
+
+For callers who only need a subscription's status and running totals (e.g.
+analytics dashboards), `get_subscription_summary(id) -> SubscriptionSummary`
+returns a lightweight struct instead of the full `Subscription`:
+
+```text
+SubscriptionSummary {
+    id: u64,
+    status: SubStatus,
+    total_charged: i128,
+    next_charge_ledger: u32,
+}
+```
+
+This avoids the instruction cost of loading and returning fields (token,
+amounts, ledgers, plan id) the caller does not need.
+
+### List size limit
+
+`get_by_subscriber` and `get_by_merchant` return `Error::ListTooLarge` if
+that party's index holds more than `MAX_LIST_SIZE` (200) subscriptions,
+instead of attempting to load and return an unbounded list. See
+`SECURITY.md` for the full resource-exhaustion discussion.
 
 The admin **cannot** charge, cancel, pause or resume anything, and cannot
 change a link once set.

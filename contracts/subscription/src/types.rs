@@ -63,3 +63,15 @@ pub struct Subscription {
     /// this amount.
     pub trial_ledgers: u32,
 }
+
+/// Lightweight view of a [`Subscription`] for analytics callers who only
+/// need its status and running totals, without the cost of loading and
+/// returning the full record.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubscriptionSummary {
+    pub id: u64,
+    pub status: SubStatus,
+    pub total_charged: i128,
+    pub next_charge_ledger: u32,
+}

@@ -1,9 +1,32 @@
 //! Tests for issue #53 (free trial), #54 (merchant end), and new view functions.
 
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{testutils::{Address as _, Events as _}, Address, Event};
 
 use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
-use crate::{Error, SubStatus};
+use crate::{events::MerchantEnded, Error, SubStatus};
+
+#[test]
+fn merchant_end_emits_merchant_ended_with_correct_fields() {
+    let s = Setup::new();
+    let id = s.subscribe();
+
+    // Charge once so total_charged is non-zero and distinguishable from 0.
+    s.client.charge(&s.merchant, &id);
+    let total_charged = s.client.get_subscription(&id).total_charged;
+    assert_eq!(total_charged, AMOUNT);
+
+    s.client.merchant_end(&s.merchant, &id);
+
+    let expected = MerchantEnded {
+        subscription_id: id,
+        merchant: s.merchant.clone(),
+        total_charged,
+    };
+    assert_eq!(
+        s.env.events().all().filter_by_contract(&s.client.address),
+        [expected.to_xdr(&s.env, &s.client.address)]
+    );
+}
 
 #[test]
 fn trial_delays_first_charge() {

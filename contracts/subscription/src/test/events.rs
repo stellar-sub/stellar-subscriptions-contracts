@@ -77,6 +77,47 @@ fn the_charge_that_reaches_the_cap_reports_exhaustion() {
 }
 
 #[test]
+fn exhausted_is_false_until_the_final_charge() {
+    let s = Setup::new();
+    // Cap = 3 periods, so the third charge exactly exhausts it.
+    let id = s.subscribe_with(AMOUNT, INTERVAL, 3 * AMOUNT);
+
+    for _ in 0..2 {
+        let now = s.ledger();
+        s.client.charge(&s.merchant, &id);
+        assert_only_event(
+            &s,
+            Charged {
+                subscription_id: id,
+                merchant: s.merchant.clone(),
+                token: s.token.address.clone(),
+                amount: AMOUNT,
+                total_charged: s.sub(id).total_charged,
+                next_charge_ledger: now + INTERVAL,
+                exhausted: false,
+            },
+        );
+        s.advance(INTERVAL);
+    }
+
+    let now = s.ledger();
+    s.client.charge(&s.merchant, &id);
+    assert_only_event(
+        &s,
+        Charged {
+            subscription_id: id,
+            merchant: s.merchant.clone(),
+            token: s.token.address.clone(),
+            amount: AMOUNT,
+            total_charged: 3 * AMOUNT,
+            next_charge_ledger: now + INTERVAL,
+            exhausted: true,
+        },
+    );
+    assert_eq!(s.sub(id).status, crate::SubStatus::Exhausted);
+}
+
+#[test]
 fn cancel_emits_cancelled_with_the_unused_cap() {
     let s = Setup::new();
     let id = s.subscribe();

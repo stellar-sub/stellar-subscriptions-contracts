@@ -15,6 +15,7 @@ mod events;
 mod hostile_token;
 mod integration;
 mod interval_limits;
+mod new_features;
 mod simulation_drift;
 mod validation;
 mod views;
