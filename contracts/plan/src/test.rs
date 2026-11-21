@@ -461,3 +461,55 @@ fn get_plans_by_token_only_includes_plans_for_that_token() {
     assert_eq!(ids(s.client.get_plans_by_token(&s.token, &0, &10)), [a, c]);
     assert_eq!(ids(s.client.get_plans_by_token(&other_token, &0, &10)), [b]);
 }
+
+#[test]
+fn get_registry_is_none_before_it_is_set() {
+    let s = Setup::new();
+    assert_eq!(s.client.get_registry(), None);
+}
+
+#[test]
+fn update_plan_description_sets_updates_and_clears() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "A");
+    assert_eq!(s.client.get_plan(&id).description, None);
+
+    let uri = s.name("https://example.com/terms");
+    s.client
+        .update_plan_description(&s.merchant, &id, &Some(uri.clone()));
+    assert_eq!(s.client.get_plan(&id).description, Some(uri));
+
+    let new_uri = s.name("https://example.com/terms-v2");
+    s.client
+        .update_plan_description(&s.merchant, &id, &Some(new_uri.clone()));
+    assert_eq!(s.client.get_plan(&id).description, Some(new_uri));
+
+    s.client.update_plan_description(&s.merchant, &id, &None);
+    assert_eq!(s.client.get_plan(&id).description, None);
+}
+
+#[test]
+fn update_plan_description_rejects_non_merchant() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "A");
+    let other = Address::generate(&s.env);
+
+    let result = s.client.try_update_plan_description(
+        &other,
+        &id,
+        &Some(s.name("https://example.com/terms")),
+    );
+    assert_eq!(result, Err(Ok(Error::NotPlanMerchant)));
+}
+
+#[test]
+fn update_plan_description_rejects_too_long_description() {
+    let s = Setup::new();
+    let id = s.create(&s.merchant, "A");
+    let long = String::from_str(&s.env, &"x".repeat(257));
+
+    let result = s
+        .client
+        .try_update_plan_description(&s.merchant, &id, &Some(long));
+    assert_eq!(result, Err(Ok(Error::InvalidDescription)));
+}

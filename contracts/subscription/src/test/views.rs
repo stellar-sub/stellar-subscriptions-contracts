@@ -6,6 +6,13 @@ use super::setup::{expect_err, Setup, AMOUNT, CAP, INTERVAL};
 use crate::{Error, SubStatus};
 
 #[test]
+fn get_registry_and_get_plan_contract_are_none_before_those_links_are_set() {
+    let s = Setup::new();
+    assert_eq!(s.client.get_registry(), None);
+    assert_eq!(s.client.get_plan_contract(), None);
+}
+
+#[test]
 fn remaining_cap_and_is_chargeable_track_the_lifecycle() {
     let s = Setup::new();
     let id = s.subscribe();

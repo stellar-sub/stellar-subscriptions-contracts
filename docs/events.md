@@ -69,10 +69,11 @@ Emitted when a merchant successfully pulls one period's payment.
 | topic 0 | event name | `Symbol` | `"charged"` |
 | topic 1 | subscription_id | `u64` | e.g. `1` |
 | topic 2 | merchant | `Address` | merchant's Stellar address |
-| data 0 | amount | `i128` | amount transferred this charge |
-| data 1 | total_charged | `i128` | cumulative total charged so far |
-| data 2 | next_charge_ledger | `u32` | earliest ledger the next charge may land |
-| data 3 | exhausted | `bool` | `true` if this charge reached `total_cap` |
+| data 0 | token | `Address` | the subscription's token contract address |
+| data 1 | amount | `i128` | amount transferred this charge |
+| data 2 | total_charged | `i128` | cumulative total charged so far |
+| data 3 | next_charge_ledger | `u32` | earliest ledger the next charge may land |
+| data 4 | exhausted | `bool` | `true` if this charge reached `total_cap` |
 
 **When emitted:** after state is written and the token transfer succeeds.
 A failed charge emits nothing.

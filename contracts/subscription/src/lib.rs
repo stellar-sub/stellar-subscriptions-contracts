@@ -13,7 +13,7 @@ mod storage;
 mod types;
 
 pub use errors::Error;
-pub use types::{SubStatus, Subscription};
+pub use types::{ChargeStatus, SubStatus, Subscription};
 
 use events::{Cancelled, Charged, Paused, Resumed, Subscribed};
 use interfaces::{PlanClient, RegistryClient};
@@ -250,6 +250,7 @@ impl SubscriptionContract {
         Charged {
             subscription_id,
             merchant: sub.merchant,
+            token: sub.token.clone(),
             amount: sub.amount_per_period,
             total_charged: sub.total_charged,
             next_charge_ledger: sub.next_charge_ledger,
@@ -411,6 +412,31 @@ impl SubscriptionContract {
             Some(total) => total <= sub.total_cap,
             None => false,
         })
+    }
+
+    /// Names the reason `charge` would succeed or fail right now, covering
+    /// every `SubStatus` plus the interval and cap checks `is_chargeable`
+    /// applies while Active.
+    pub fn charge_status(env: Env, subscription_id: u64) -> Result<ChargeStatus, Error> {
+        let sub = storage::read_sub(&env, subscription_id)?;
+        let status = match sub.status {
+            SubStatus::Paused => ChargeStatus::Paused,
+            SubStatus::Cancelled => ChargeStatus::Cancelled,
+            SubStatus::Exhausted => ChargeStatus::Exhausted,
+            SubStatus::MerchantEnded => ChargeStatus::MerchantEnded,
+            SubStatus::Active => {
+                let now = env.ledger().sequence();
+                if now < sub.next_charge_ledger {
+                    ChargeStatus::TooEarly
+                } else {
+                    match sub.total_charged.checked_add(sub.amount_per_period) {
+                        Some(total) if total <= sub.total_cap => ChargeStatus::Chargeable,
+                        _ => ChargeStatus::CapWouldBeExceeded,
+                    }
+                }
+            }
+        };
+        Ok(status)
     }
 
     /// Cap that can still ever be charged: `total_cap - total_charged` while

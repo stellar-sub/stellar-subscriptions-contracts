@@ -77,6 +77,30 @@ fn the_charge_that_reaches_the_cap_reports_exhaustion() {
 }
 
 #[test]
+fn charged_event_token_matches_the_subscriptions_token() {
+    let s = Setup::new();
+    let id = s.subscribe();
+    let now = s.ledger();
+    s.client.charge(&s.merchant, &id);
+
+    let sub = s.sub(id);
+    assert_eq!(sub.token, s.token.address);
+
+    assert_only_event(
+        &s,
+        Charged {
+            subscription_id: id,
+            merchant: s.merchant.clone(),
+            token: sub.token.clone(),
+            amount: AMOUNT,
+            total_charged: AMOUNT,
+            next_charge_ledger: now + INTERVAL,
+            exhausted: false,
+        },
+    );
+}
+
+#[test]
 fn cancel_emits_cancelled_with_the_unused_cap() {
     let s = Setup::new();
     let id = s.subscribe();

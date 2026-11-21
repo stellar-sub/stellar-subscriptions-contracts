@@ -31,6 +31,7 @@ pub struct Charged {
     pub subscription_id: u64,
     #[topic]
     pub merchant: Address,
+    pub token: Address,
     pub amount: i128,
     pub total_charged: i128,
     pub next_charge_ledger: u32,
