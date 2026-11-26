@@ -7,6 +7,7 @@
 use soroban_sdk::{contractevent, Address};
 
 /// A subscription was indexed for the first time. Starts Active.
+#[allow(missing_docs)]
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubscriptionRegistered {
@@ -19,6 +20,7 @@ pub struct SubscriptionRegistered {
 }
 
 /// A subscription's indexed total and status changed.
+#[allow(missing_docs)]
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubscriptionUpdated {

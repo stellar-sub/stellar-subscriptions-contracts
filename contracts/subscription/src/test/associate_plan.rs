@@ -25,6 +25,7 @@ fn create_plan(s: &Setup, plans: &PlanContractClient) -> u64 {
         &AMOUNT,
         &INTERVAL,
         &CAP,
+        &None,
     )
 }
 

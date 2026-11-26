@@ -12,7 +12,7 @@
 //! parties.
 
 mod errors;
-mod events;
+pub mod events;
 mod storage;
 mod types;
 
@@ -23,6 +23,7 @@ pub const VERSION: u32 = 1;
 pub const MAX_PAGE_SIZE: u32 = 100;
 
 pub use errors::Error;
+pub use events::{SubscriptionRegistered, SubscriptionUpdated};
 pub use types::{
     MerchantStats, RegistryStats, SubscriptionRecord, Writers, STATUS_ACTIVE, STATUS_CANCELLED,
     STATUS_EXHAUSTED, STATUS_MERCHANT_ENDED, STATUS_PAUSED,
